@@ -54,6 +54,8 @@ public:
         return mat_vec_multiplication(m_G,x);
     }
 
+    void subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv);
+
     vector_fp down_sampling(const vector_fp& x) {
         vector_fp xnew;
         size_t half_delta = (m_delta+1)/2;
@@ -66,6 +68,16 @@ public:
     void model_diff() {};
 
     void model_src(const doublereal* x);
+
+    // for verification
+    void wdot_orig(const doublereal* x,size_t j,doublereal* wdot_) {
+        sf->setGas(x,j);
+        sf->kinetics().getNetProductionRates(wdot_);
+    }
+
+    doublereal getWdot_fine(size_t k, size_t j) {
+        return wdot_fine(k,j);
+    }
 
 private:
     vector_fp mat_vec_multiplication(const DenseMatrix& A,const vector_fp& x);
@@ -91,9 +103,11 @@ private:
     DenseMatrix m_G;
     // deconvolution matrix
     DenseMatrix m_Q;
+    // base subgrid contribution matrix (I - Q*G)
+    DenseMatrix m_SG;
 
     // species production term
-    Array2D m_wdot;
+    Array2D wdot_fine;
 
 };
 

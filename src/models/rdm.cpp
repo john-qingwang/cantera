@@ -19,32 +19,33 @@ rdm::rdm(StFlow* const sf_, size_t delta, vector_fp& z) :
     }
     m_z[m_nz-1] = z[m_npts-1];
 
-    m_interp.resize(m_nz,m_npts,0.0);
-    interp_factory(z);
-
     // interpolation matrix
     opt_interp_s = "spline";
     spline_bc_s = "parabolic-run-out";
-    if (opt_interp_s.compare("spline")) {
+    if (opt_interp_s.compare("spline")==0) {
         opt_interp = 1;
-        if (spline_bc_s.compare("free-run-out")) {
+        if (spline_bc_s.compare("free-run-out")==0) {
             spline_bc = 1;
-        } else if(spline_bc_s.compare("parabolic-run-out")) {
+        } else if(spline_bc_s.compare("parabolic-run-out")==0) {
             spline_bc = 2;
-        } else if(spline_bc_s.compare("periodic")) {
+        } else if(spline_bc_s.compare("periodic")==0) {
             spline_bc = 3;
         } else {
             spline_bc = 1;
         }
     }
+    m_interp.resize(m_nz,m_npts,0.0);
+    interp_factory(z);
     
     // filter and deconvolution operators
     m_G.resize(m_nz,m_nz,0.0);
     m_Q.resize(m_nz,m_nz,0.0);
+    m_SG.resize(m_nz,m_nz,0.0);
     operator_init();
 
     // solution arrays
     m_wdot.resize(sf->phase().nSpecies(),m_npts,0.0);
+    wdot_fine.resize(sf->phase().nSpecies(),m_nz,0.0);
 
 }
 
@@ -71,6 +72,7 @@ void rdm::update_grid(const vector_fp& z)
     operator_init();
 
     m_wdot.resize(sf->phase().nSpecies(),m_npts,0.0);
+    wdot_fine.resize(sf->phase().nSpecies(),m_nz,0.0);
 
 }
 
@@ -152,6 +154,17 @@ void rdm::interp_factory(const vector_fp& z)
                  break;
              }
     }
+    /* for debug
+    std::ofstream debug_file;
+    debug_file.open("mat_debug_interp.dat");
+    for (size_t i=0; i<m_interp.nRows(); i++) {
+        for (size_t j=0; j<m_interp.nColumns(); j++) {
+            debug_file << m_interp(i,j) << ",";
+        }
+        debug_file << std::endl;
+    }
+    debug_file.close();
+    */
 
 }
 
@@ -196,28 +209,26 @@ void rdm::operator_init()
     buf = I;
     buf *= alpha;
     buf += G2;
-    std::ofstream debug_file;
-    debug_file.open("mat_debug_buf.dat");
-    for (size_t i=0; i<m_Q.nRows(); i++) {
-        for (size_t j=0; j<m_Q.nColumns(); j++) {
-            debug_file << buf(i,j) << ",";
-        }
-        debug_file << std::endl;
-    }
-    debug_file.close();
     solve(buf,rhs);
     rhs += I;
     m_Q = rhs;
 
-    // for debug
-    debug_file.open("mat_debug_G2.dat");
+    // subgrid reconstruction operator
+    m_Q.mult(m_G,m_SG);
+    m_SG *= -1.0;
+    m_SG += I;
+
+    /* for debug
+    std::ofstream debug_file;
+    debug_file.open("mat_debug_Q.dat");
     for (size_t i=0; i<m_Q.nRows(); i++) {
         for (size_t j=0; j<m_Q.nColumns(); j++) {
-            debug_file << G2(i,j) << ",";
+            debug_file << m_Q(i,j) << ",";
         }
         debug_file << std::endl;
     }
     debug_file.close();
+    */
 
 }
 
@@ -239,12 +250,54 @@ vector_fp rdm::mat_vec_multiplication(const DenseMatrix& A,const vector_fp& x)
     return sol_;
 }
 
+void rdm::subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv)
+{
+    assert(xbar.size()==xdcv.size());
+
+    vector_fp xvar1,xvar2;
+
+    // variance 1: compute from algebric model
+    doublereal Cz = 0.8;
+    for (vector_fp::const_iterator it = xbar.begin(); it != xbar.end(); ++it) {
+        xvar1.push_back(std::pow(*it,2.0));
+    }
+    vector_fp buf1 = filtering(xvar1);
+    vector_fp buf2 = filtering(xbar);
+    vector_fp::iterator it1 = buf1.begin();
+    vector_fp::iterator it2 = buf2.begin();
+    for (vector_fp::iterator it = xvar1.begin(); it != xvar1.end(); ++it) {
+        *it = Cz*std::max(*it1 - std::pow(*it2,2.0), 0.0);
+        ++it1;
+        ++it2;
+    }
+    
+    // variance 2: compute from deconvolution results
+    vector_fp::const_iterator it0 = xbar.begin();
+    it2 = xdcv.begin();
+    for (vector_fp::iterator it = xvar2.begin(); it != xvar2.end(); ++it) {
+        *it = std::pow(*it0-*it2,2.0);
+        ++it0;
+        ++it2;
+    }
+
+    // compute the subgrid contribution
+    buf1 = mat_vec_multiplication(m_SG,xbar); 
+    it1 = xvar1.begin();
+    it2 = xvar2.begin();
+    vector_fp::iterator it3 = buf1.begin();
+    for (vector_fp::iterator it = xdcv.begin(); it != xdcv.end(); ++it) {
+        *it += std::sqrt((*it1)/(*it2))*(*it3);
+        ++it1;
+        ++it2;
+        ++it3;
+    }
+       
+}
+
 void rdm::model_src(const doublereal* x)
 {
     size_t nsp = sf->phase().nSpecies();
     size_t nvar = c_offset_Y + nsp;
-
-    Array2D wdot_fine(sf->phase().nSpecies(),m_nz,0.0);
 
     doublereal* xnew = new doublereal[nvar*m_nz];
 
@@ -256,12 +309,14 @@ void rdm::model_src(const doublereal* x)
             sc.push_back(*(x+k+i*nvar));
         }
         // Interpolation
-        vector_fp sc_buf = interpolation(sc);
+        vector_fp sc_bar = interpolation(sc);
         // Deconvolution
-        sc_buf = deconvolution(sc_buf);
+        vector_fp sc_dcv = deconvolution(sc_bar);
+        // Subgrid reconstruction
+        subgrid_reconstruction(sc_bar,sc_dcv);
         // Assemble the scalar k back into the mixed vector
         for (size_t i=0; i<m_nz; i++) {
-            xnew[k+i*nvar] = sc_buf[i];
+            xnew[k+i*nvar] = sc_dcv[i];
         }
     }
     // Compute the source term
@@ -276,6 +331,11 @@ void rdm::model_src(const doublereal* x)
             src.push_back(wdot_fine(k,j));
         }
         vector_fp src_buf = filtering(src);
+        // /* for development purpose only
+        for (size_t j=0; j<m_nz; j++) {
+            wdot_fine(k,j) = src_buf[j];
+        }
+        // */
         vector_fp src_buf2 = down_sampling(src_buf);
         for (size_t j=0; j<m_npts; j++) {
             m_wdot(k,j) = src_buf2[j];

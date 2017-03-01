@@ -10,7 +10,10 @@ class model_generic
 {
 
 public:
-    model_generic(StFlow* const sf_) : sf(sf_) {};
+    model_generic(StFlow* const sf_) : sf(sf_)
+    {
+        m_wdot.resize(sf_->phase().nSpecies(),sf_->nPoints(),0.0);
+    }
 
     ~model_generic() {};
 
@@ -21,6 +24,8 @@ public:
 protected:
     // a pointer to which the rdm operator is belonging to
     StFlow* const sf;
+    // species production term
+    Array2D m_wdot;
 
 };
 
