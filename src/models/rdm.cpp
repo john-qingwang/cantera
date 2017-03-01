@@ -11,9 +11,9 @@ rdm::rdm(StFlow* const sf_, size_t delta, vector_fp& z) :
     m_npts = z.size();
     m_nz = (m_npts-1)*refine_factor+1;
     m_z.resize(m_nz);
-    for (size_t i=0; i<m_npts-1; ++i) {
+    for (size_t i=0; i<m_npts-1; i++) {
         doublereal dz = (z[i+1]-z[i])/(doublereal)refine_factor;
-        for (size_t j=0; j<refine_factor; ++j) {
+        for (size_t j=0; j<refine_factor; j++) {
             m_z[j+i*refine_factor] = z[i] + (doublereal)j*dz; 
         }
     }
@@ -55,9 +55,9 @@ void rdm::update_grid(const vector_fp& z)
     m_npts = z.size();
     m_nz = (m_npts-1)*refine_factor+1;
     m_z.resize(m_nz);
-    for (size_t i=0; i<m_npts-1; ++i) {
+    for (size_t i=0; i<m_npts-1; i++) {
         doublereal dz = (z[i+1]-z[i])/(doublereal)refine_factor;
-        for (size_t j=0; j<refine_factor; ++j) {
+        for (size_t j=0; j<refine_factor; j++) {
             m_z[j+i*refine_factor] = z[i] + (doublereal)j*dz; 
         }
     }
@@ -81,7 +81,7 @@ void rdm::interp_factory(const vector_fp& z)
                 // Spline interpolation
                 vector_fp dz;
                 dz.resize(m_npts-1);
-                for (size_t i=0; i<m_npts-1; ++i) {
+                for (size_t i=0; i<m_npts-1; i++) {
                     dz[i] = z[i+1]-z[i];
                 }
                 
@@ -89,7 +89,7 @@ void rdm::interp_factory(const vector_fp& z)
                 DenseMatrix rhs(m_npts,m_npts,0.0);
                 G(0,0) = 1.0;
                 G(m_npts-1,m_npts-1) = 1.0;
-                for (size_t i = 1; i<m_npts-1; ++i) {
+                for (size_t i = 1; i<m_npts-1; i++) {
                     G(i,i-1) = dz[i-1]/6.0;
                     G(i,i  ) = (dz[i-1]+dz[i])/3.0;
                     G(i,i+1) = dz[i]/6.0;
@@ -115,6 +115,7 @@ void rdm::interp_factory(const vector_fp& z)
                             G(m_npts-1,m_npts-3) = G(m_npts-2,m_npts-3);
                             rhs.getRow(m_npts-2,buf);
                             rhs.setRow(m_npts-1,buf);
+                            delete[] buf;
                             break;
                         }
                 case 3: {
@@ -127,7 +128,7 @@ void rdm::interp_factory(const vector_fp& z)
                 DenseMatrix C1(m_nz,m_npts,0.0);
                 DenseMatrix C2(m_nz,m_npts,0.0);
                 size_t i_src = 0;
-                for (size_t i=0; i<m_nz; ++i) {
+                for (size_t i=0; i<m_nz; i++) {
                     doublereal z_ = m_z[i];
                     if (z_>z[i_src+1]) {
                         i_src++;
@@ -158,14 +159,14 @@ void rdm::operator_init()
 {
     size_t half_delta = (m_delta-1)/2;
     // filter operator
-    for (size_t i=0; i<m_nz; ++i) {
+    for (size_t i=0; i<m_nz; i++) {
         int l_ = i-half_delta;
         int r_ = i+half_delta;
-        for (size_t j=std::max(0,l_); j<=std::min((int)(m_nz)-1,r_); ++j) {
+        for (size_t j=std::max(0,l_); j<=std::min((int)(m_nz)-1,r_); j++) {
             m_G(i,j) = 1.0/(doublereal)m_delta;
         }
         if (l_<0) {
-            m_G(i,1) = (1.0-(doublereal)l_)*m_G(i,1);
+            m_G(i,0) = (1.0-(doublereal)l_)*m_G(i,0);
         } else if (r_>m_nz-1) {
             m_G(i,m_nz-1) = (1.0+(doublereal)(r_-m_nz+1))*m_G(i,m_nz-1);
         }
@@ -173,18 +174,19 @@ void rdm::operator_init()
     // deconvolution operator
     DenseMatrix I(m_nz,m_nz,0.0);
     DenseMatrix GT(m_nz,m_nz,0.0);
-    for (size_t i=0; i<m_nz; ++i) {
+    for (size_t i=0; i<m_nz; i++) {
         I(i,i) = 1.0;
-        for (size_t j=0; j<m_nz; ++j) {
+        for (size_t j=0; j<m_nz; j++) {
             GT(j,i) = m_G(i,j);
         }
     }
     DenseMatrix G2(m_nz,m_nz,0.0);
     GT.mult(m_G,G2);
     doublereal alpha = 0.0;
-    for (size_t i=0; i<m_nz; ++i) {
+    for (size_t i=0; i<m_nz; i++) {
         alpha += G2(i,i);
     }
+    alpha /= (doublereal)m_nz;
     m_Q = m_G;
     m_Q *= -1.0;
     m_Q += I;
@@ -193,26 +195,47 @@ void rdm::operator_init()
     DenseMatrix buf(m_nz,m_nz,0.0);
     buf = I;
     buf *= alpha;
-    G2 += buf;
-    solve(G2,rhs);
+    buf += G2;
+    std::ofstream debug_file;
+    debug_file.open("mat_debug_buf.dat");
+    for (size_t i=0; i<m_Q.nRows(); i++) {
+        for (size_t j=0; j<m_Q.nColumns(); j++) {
+            debug_file << buf(i,j) << ",";
+        }
+        debug_file << std::endl;
+    }
+    debug_file.close();
+    solve(buf,rhs);
     rhs += I;
     m_Q = rhs;
+
+    // for debug
+    debug_file.open("mat_debug_G2.dat");
+    for (size_t i=0; i<m_Q.nRows(); i++) {
+        for (size_t j=0; j<m_Q.nColumns(); j++) {
+            debug_file << G2(i,j) << ",";
+        }
+        debug_file << std::endl;
+    }
+    debug_file.close();
 
 }
 
 vector_fp rdm::mat_vec_multiplication(const DenseMatrix& A,const vector_fp& x)
 {
     assert(A.nColumns()==x.size());
-    doublereal* x_ = new doublereal(x.size());
-    for (size_t i=0; i<x.size(); ++i) {
+    double* x_ = new double[x.size()];
+    for (size_t i=0; i<x.size(); i++) {
         x_[i] = x[i];
     }
-    doublereal* sol = new doublereal[A.nRows()];
+    double* sol = new double[A.nRows()];
     multiply(A,x_,sol);
     vector_fp sol_;
     for (size_t i=0; i<A.nRows(); i++) {
         sol_.push_back(sol[i]);
     }
+    delete[] x_;
+    delete[] sol;
     return sol_;
 }
 
@@ -226,10 +249,10 @@ void rdm::model_src(const doublereal* x)
     doublereal* xnew = new doublereal[nvar*m_nz];
 
     // Deconvolving the variables
-    for (size_t k=0; k<nvar; ++k) {
+    for (size_t k=0; k<nvar; k++) {
         // Assemble the scalar k into one vector
         vector_fp sc;
-        for (size_t i=0; i<m_npts; ++i) {
+        for (size_t i=0; i<m_npts; i++) {
             sc.push_back(*(x+k+i*nvar));
         }
         // Interpolation
@@ -237,12 +260,12 @@ void rdm::model_src(const doublereal* x)
         // Deconvolution
         sc_buf = deconvolution(sc_buf);
         // Assemble the scalar k back into the mixed vector
-        for (size_t i=0; i<m_nz; ++i) {
+        for (size_t i=0; i<m_nz; i++) {
             xnew[k+i*nvar] = sc_buf[i];
         }
     }
     // Compute the source term
-    for (size_t j=0; j<m_nz; ++j) {
+    for (size_t j=0; j<m_nz; j++) {
         sf->setGas(xnew,j);
         sf->kinetics().getNetProductionRates(&wdot_fine(0,j));
     }
@@ -258,6 +281,8 @@ void rdm::model_src(const doublereal* x)
             m_wdot(k,j) = src_buf2[j];
         }
     }
+
+    delete[] xnew;
 
 }
 
