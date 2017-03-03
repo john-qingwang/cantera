@@ -7,6 +7,7 @@
 #include "cantera/base/ctml.h"
 #include "cantera/transport/TransportBase.h"
 #include "cantera/numerics/funcs.h"
+#include "cantera/models/ModelFactory.h"
 
 using namespace std;
 
@@ -26,7 +27,8 @@ StFlow::StFlow(IdealGasPhase* ph, size_t nsp, size_t points) :
     m_do_multicomponent(false),
     m_do_radiation(false),
     m_kExcessLeft(0),
-    m_kExcessRight(0)
+    m_kExcessRight(0),
+    model(nullptr)
 {
     m_type = cFlowType;
     m_points = points;
@@ -91,6 +93,13 @@ StFlow::StFlow(IdealGasPhase* ph, size_t nsp, size_t points) :
     m_kRadiating.resize(2, npos);
     m_kRadiating[0] = m_thermo->speciesIndex("CO2");
     m_kRadiating[1] = m_thermo->speciesIndex("H2O");
+
+    // For model development
+    enable_model = false;
+    if (nsp>1 && points>1) {
+        std::cout << "updating model from StFlow::StFlow" << std::endl;
+        set_model("RDM");
+    }
 }
 
 void StFlow::resize(size_t ncomponents, size_t points)
@@ -115,6 +124,12 @@ void StFlow::resize(size_t ncomponents, size_t points)
 
     m_dz.resize(m_points-1);
     m_z.resize(m_points);
+
+    // For model development
+    if (model!=nullptr) {
+        std::cout << "updating model from StFlow::resize" << std::endl;
+        model->update(this);
+    }
 }
 
 void StFlow::setupGrid(size_t n, const doublereal* z)
@@ -129,6 +144,12 @@ void StFlow::setupGrid(size_t n, const doublereal* z)
         }
         m_z[j] = z[j];
         m_dz[j-1] = m_z[j] - m_z[j-1];
+    }
+
+    // For model development: update the model whenever there's a change of the grid
+    if (model!=nullptr) {
+        std::cout << "updating model from StFlow::setupGrid" << std::endl;
+        model->update(this);
     }
 }
 
@@ -332,6 +353,11 @@ void StFlow::eval(size_t jg, doublereal* xg,
         }
     }
 
+    // Compute the modeled terms if necessary
+    if (enable_model && jg==npos) {
+        model->getWdot(x);
+    }
+
     for (size_t j = jmin; j <= jmax; j++) {
         //----------------------------------------------
         //         left boundary
@@ -392,8 +418,14 @@ void StFlow::eval(size_t jg, doublereal* xg,
                 double convec = rho_u(x,j)*dYdz(x,k,j);
                 double diffus = 2.0*(m_flux(k,j) - m_flux(k,j-1))
                                 / (z(j+1) - z(j-1));
+                double wdot_;
+                if (enable_model && jg==npos) {
+                    wdot_ = model->wdot(k,j);
+                } else {
+                    wdot_ = this->wdot(k,j);
+                }
                 rsd[index(c_offset_Y + k, j)]
-                = (m_wt[k]*(wdot(k,j))
+                = (m_wt[k]*(wdot_)
                    - convec - diffus)/m_rho[j]
                   - rdt*(Y(x,k,j) - Y_prev(k,j));
                 diag[index(c_offset_Y + k, j)] = 1;
@@ -995,6 +1027,12 @@ XML_Node& FreeFlame::save(XML_Node& o, const doublereal* const sol)
         addFloat(flow, "t_fixed", m_tfixed, "K");
     }
     return flow;
+}
+
+void StFlow::set_model(std::string model_name)
+{
+    std::cout << "updating model from StFlow::set_model" << std::endl;
+    model = ModelFactory::make_model(this,model_name);
 }
 
 } // namespace

@@ -1,13 +1,80 @@
-#include "cantera/models/rdm.h"
+#include "cantera/models/RDM.h"
 
 namespace Cantera
 {
 
-rdm::rdm(StFlow* const sf_, size_t delta, vector_fp& z) : 
-     model_generic(sf_),m_delta(delta)
+RDM::RDM(StFlow* const sf_, size_t delta) : 
+     ModelGeneric(sf_),m_delta(delta)
 {
-    // fine mesh for interpolation
+    opt_interp_s = "spline";
+    spline_bc_s = "parabolic-run-out";
+
+    update_grid();
+
+}
+
+void RDM::getWdot(const doublereal* x)
+{
+    size_t nsp = sf->phase().nSpecies();
+    size_t nvar = c_offset_Y + nsp;
+
+    doublereal* xnew = new doublereal[nvar*m_nz];
+
+    // Deconvolving the variables
+    for (size_t k=0; k<nvar; k++) {
+        // Assemble the scalar k into one vector
+        vector_fp sc;
+        for (size_t i=0; i<m_npts; i++) {
+            sc.push_back(x[k+i*nvar]);
+        }
+        // Interpolation
+        vector_fp sc_bar = interpolation(sc);
+        // Deconvolution
+        vector_fp sc_dcv = deconvolution(sc_bar);
+        // Subgrid reconstruction
+        subgrid_reconstruction(sc_bar,sc_dcv);
+        // Assemble the scalar k back into the mixed vector
+        for (size_t i=0; i<m_nz; i++) {
+            xnew[k+i*nvar] = sc_dcv[i];
+        }
+    }
+    // Compute the source term
+    for (size_t j=0; j<m_nz; j++) {
+        sf->setGas(xnew,j);
+        sf->kinetics().getNetProductionRates(&m_wdot_fine(0,j));
+    }
+    // Filter the source term and down-scale it to the original size
+    for (size_t k=0; k<nsp; k++) {
+        vector_fp src;
+        for (size_t j=0; j<m_nz; j++) {
+            src.push_back(m_wdot_fine(k,j));
+        }
+        vector_fp src_buf = filtering(src);
+        // /* for development purpose only
+        for (size_t j=0; j<m_nz; j++) {
+            m_wdot_fine(k,j) = src_buf[j];
+        }
+        // */
+        vector_fp src_buf2 = down_sampling(src_buf);
+        for (size_t j=0; j<m_npts; j++) {
+            doublereal sc_ = x[c_offset_Y+k+j*nvar];
+            m_wdot(k,j) = ((src_buf2[j]>0.0 && std::abs(sc_-1.0)<1.0e-10) || 
+                           (src_buf2[j]<0.0 && std::abs(sc_-0.0)<1.0e-10))
+                          ? 0.0
+                          : src_buf2[j];
+        }
+    }
+
+    delete[] xnew;
+
+}
+
+void RDM::update_grid()
+{
+    vector_fp z = sf->grid();
     size_t refine_factor = (m_delta+1)/2;
+
+    // fine mesh for interpolation
     m_npts = z.size();
     m_nz = (m_npts-1)*refine_factor+1;
     m_z.resize(m_nz);
@@ -20,8 +87,6 @@ rdm::rdm(StFlow* const sf_, size_t delta, vector_fp& z) :
     m_z[m_nz-1] = z[m_npts-1];
 
     // interpolation matrix
-    opt_interp_s = "spline";
-    spline_bc_s = "parabolic-run-out";
     if (opt_interp_s.compare("spline")==0) {
         opt_interp = 1;
         if (spline_bc_s.compare("free-run-out")==0) {
@@ -34,49 +99,22 @@ rdm::rdm(StFlow* const sf_, size_t delta, vector_fp& z) :
             spline_bc = 1;
         }
     }
-    m_interp.resize(m_nz,m_npts,0.0);
+    m_interp.resize(m_nz,m_npts,0.0); m_interp*=0.0;
     interp_factory(z);
-    
+
     // filter and deconvolution operators
-    m_G.resize(m_nz,m_nz,0.0);
-    m_Q.resize(m_nz,m_nz,0.0);
-    m_SG.resize(m_nz,m_nz,0.0);
+    m_G.resize(m_nz,m_nz,0.0); m_G*=0.0;
+    m_Q.resize(m_nz,m_nz,0.0); m_Q*=0.0;
+    m_SG.resize(m_nz,m_nz,0.0); m_SG*=0.0;
     operator_init();
 
     // solution arrays
-    m_wdot.resize(sf->phase().nSpecies(),m_npts,0.0);
-    wdot_fine.resize(sf->phase().nSpecies(),m_nz,0.0);
+    m_wdot.resize(sf->phase().nSpecies(),m_npts,0.0); m_wdot*=0.0;
+    m_wdot_fine.resize(sf->phase().nSpecies(),m_nz,0.0); m_wdot_fine*=0.0;
 
 }
 
-void rdm::update_grid(const vector_fp& z)
-{
-    size_t refine_factor = (m_delta+1)/2;
-
-    m_npts = z.size();
-    m_nz = (m_npts-1)*refine_factor+1;
-    m_z.resize(m_nz);
-    for (size_t i=0; i<m_npts-1; i++) {
-        doublereal dz = (z[i+1]-z[i])/(doublereal)refine_factor;
-        for (size_t j=0; j<refine_factor; j++) {
-            m_z[j+i*refine_factor] = z[i] + (doublereal)j*dz; 
-        }
-    }
-    m_z[m_nz-1] = z[m_npts-1];
-
-    m_interp.resize(m_nz,m_npts,0.0);
-    m_G.resize(m_nz,m_nz,0.0);
-    m_Q.resize(m_nz,m_nz,0.0);
-
-    interp_factory(z);
-    operator_init();
-
-    m_wdot.resize(sf->phase().nSpecies(),m_npts,0.0);
-    wdot_fine.resize(sf->phase().nSpecies(),m_nz,0.0);
-
-}
-
-void rdm::interp_factory(const vector_fp& z)
+void RDM::interp_factory(const vector_fp& z)
 {
     switch (opt_interp) {
     case 1: {
@@ -168,7 +206,7 @@ void rdm::interp_factory(const vector_fp& z)
 
 }
 
-void rdm::operator_init()
+void RDM::operator_init()
 {
     size_t half_delta = (m_delta-1)/2;
     // filter operator
@@ -184,6 +222,7 @@ void rdm::operator_init()
             m_G(i,m_nz-1) = (1.0+(doublereal)(r_-m_nz+1))*m_G(i,m_nz-1);
         }
     }
+
     // deconvolution operator
     DenseMatrix I(m_nz,m_nz,0.0);
     DenseMatrix GT(m_nz,m_nz,0.0);
@@ -200,6 +239,7 @@ void rdm::operator_init()
         alpha += G2(i,i);
     }
     alpha /= (doublereal)m_nz;
+    alpha *= 10;
     m_Q = m_G;
     m_Q *= -1.0;
     m_Q += I;
@@ -229,10 +269,9 @@ void rdm::operator_init()
     }
     debug_file.close();
     */
-
 }
 
-vector_fp rdm::mat_vec_multiplication(const DenseMatrix& A,const vector_fp& x)
+vector_fp RDM::mat_vec_multiplication(const DenseMatrix& A,const vector_fp& x)
 {
     assert(A.nColumns()==x.size());
     double* x_ = new double[x.size()];
@@ -250,7 +289,7 @@ vector_fp rdm::mat_vec_multiplication(const DenseMatrix& A,const vector_fp& x)
     return sol_;
 }
 
-void rdm::subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv)
+void RDM::subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv)
 {
     assert(xbar.size()==xdcv.size());
 
@@ -294,57 +333,5 @@ void rdm::subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv)
        
 }
 
-void rdm::model_src(const doublereal* x)
-{
-    size_t nsp = sf->phase().nSpecies();
-    size_t nvar = c_offset_Y + nsp;
-
-    doublereal* xnew = new doublereal[nvar*m_nz];
-
-    // Deconvolving the variables
-    for (size_t k=0; k<nvar; k++) {
-        // Assemble the scalar k into one vector
-        vector_fp sc;
-        for (size_t i=0; i<m_npts; i++) {
-            sc.push_back(*(x+k+i*nvar));
-        }
-        // Interpolation
-        vector_fp sc_bar = interpolation(sc);
-        // Deconvolution
-        vector_fp sc_dcv = deconvolution(sc_bar);
-        // Subgrid reconstruction
-        subgrid_reconstruction(sc_bar,sc_dcv);
-        // Assemble the scalar k back into the mixed vector
-        for (size_t i=0; i<m_nz; i++) {
-            xnew[k+i*nvar] = sc_dcv[i];
-        }
-    }
-    // Compute the source term
-    for (size_t j=0; j<m_nz; j++) {
-        sf->setGas(xnew,j);
-        sf->kinetics().getNetProductionRates(&wdot_fine(0,j));
-    }
-    // Filter the source term and down-scale it to the original size
-    for (size_t k=0; k<nsp; k++) {
-        vector_fp src;
-        for (size_t j=0; j<m_nz; j++) {
-            src.push_back(wdot_fine(k,j));
-        }
-        vector_fp src_buf = filtering(src);
-        // /* for development purpose only
-        for (size_t j=0; j<m_nz; j++) {
-            wdot_fine(k,j) = src_buf[j];
-        }
-        // */
-        vector_fp src_buf2 = down_sampling(src_buf);
-        for (size_t j=0; j<m_npts; j++) {
-            m_wdot(k,j) = src_buf2[j];
-        }
-    }
-
-    delete[] xnew;
-
-}
-
-}
+} // Cantera
 

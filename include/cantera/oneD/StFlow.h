@@ -26,6 +26,8 @@ const size_t c_offset_L = 3; // (1/r)dP/dr
 const size_t c_offset_Y = 4; // mass fractions
 
 class Transport;
+class ModelGeneric;
+class RDM;
 
 /**
  *  This class represents 1D flow domains that satisfy the one-dimensional
@@ -34,6 +36,9 @@ class Transport;
  */
 class StFlow : public Domain1D
 {
+
+friend class ModelGeneric;
+
 public:
     //--------------------------------
     // construction and destruction
@@ -230,6 +235,22 @@ public:
         return m_kExcessRight;
     }
 
+    //! Toggle for model development
+    void model_toggle(std::string opt) {
+        if (opt.compare("on")==0) {
+            enable_model = true;
+        } else {
+            enable_model = false;
+        }
+    }
+
+    void set_model(std::string model_name);
+
+    ModelGeneric* get_model()
+    {
+        return model;
+    }
+
 protected:
     doublereal wdot(size_t k, size_t j) const {
         return m_wdot(k,j);
@@ -418,6 +439,11 @@ protected:
 
 private:
     vector_fp m_ybar;
+
+    // for model development
+    bool enable_model;
+    ModelGeneric* model;
+
 };
 
 /**
