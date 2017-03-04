@@ -9,6 +9,7 @@ RDM::RDM(StFlow* const sf_, size_t delta) :
     opt_interp_s = "spline";
     spline_bc_s = "parabolic-run-out";
     alpha_amp = 1.0;
+    use_constrained_qp = false;
 
     update_grid();
 
@@ -31,7 +32,7 @@ void RDM::getWdot(const doublereal* x)
         // Interpolation
         vector_fp sc_bar = interpolation(sc);
         // Deconvolution
-        vector_fp sc_dcv = deconvolution(sc_bar);
+        vector_fp sc_dcv = deconvolution(sc_bar,k);
         // Subgrid reconstruction
         subgrid_reconstruction(sc_bar,sc_dcv);
         // Assemble the scalar k back into the mixed vector
@@ -363,8 +364,10 @@ void RDM::subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv)
        
 }
 
-vector_fp RDM::constrained_deconvolution(const vector_fp& x) {
+vector_fp RDM::constrained_deconvolution(const vector_fp& x, size_t k) {
     assert(x.size()==m_nz);
+
+    // Update the constraints matrices
     doublereal* qp_c = new doublereal[m_nz];
     doublereal* qp_b = new doublereal[1];
     doublereal qp_c0 = 0.0;
@@ -382,6 +385,17 @@ vector_fp RDM::constrained_deconvolution(const vector_fp& x) {
         i++;
     }
     qp_c0 *= (1.0+alpha);
+    if (k<c_offset_Y) {
+        for (size_t j = 0; j < m_nz; j++) {
+            qp_fl[j] = false;
+            qp_fu[j] = false;
+        }
+    } else {
+        for (size_t j = 0; j < m_nz; j++) {
+            qp_fl[j] = true;
+            qp_fu[j] = true;
+        }
+    }
 
     // linear constraint is "="
     CGAL::Const_oneset_iterator<CGAL::Comparison_result> 

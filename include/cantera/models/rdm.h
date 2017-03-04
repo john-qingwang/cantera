@@ -98,6 +98,15 @@ public:
         operator_init();
     }
 
+    void update_deconvolution_method(std::string deconv_opt)
+    {
+        if (deconv_opt.compare("constrained")==0) {
+            use_constrained_qp = true;
+        } else {
+            use_constrained_qp = false;
+        }
+    }
+
     size_t nPoints() {
         return m_nz;
     }
@@ -125,6 +134,12 @@ public:
         std::cout << " Reg. Amp.    : " << std::setw(5) << alpha_amp << std::endl;
         std::cout << " Interp size  : " << std::setw(5) << m_nz << std::endl;
         std::cout << " Interp method: " << opt_interp_s << std::endl;
+        std::cout << " Deconvolution: ";
+        if (use_constrained_qp) {
+            std::cout << "constrained" << std::endl;
+        } else {
+            std::cout << "unconstrained" << std::endl;
+        }
     }
 
     void interp_factory(const vector_fp& z);
@@ -137,10 +152,14 @@ public:
         return mat_vec_multiplication(m_interp,x);
     }
 
-    vector_fp deconvolution(const vector_fp& x)
+    vector_fp deconvolution(const vector_fp& x, size_t k)
     {
         assert(x.size()==m_nz);
-        return mat_vec_multiplication(m_Q,x);
+        if (use_constrained_qp) {
+            return constrained_deconvolution(x,k);
+        } else {
+            return mat_vec_multiplication(m_Q,x);
+        }
     }
 
     vector_fp filtering(const vector_fp& x)
@@ -151,7 +170,7 @@ public:
 
     void subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv);
 
-    vector_fp constrained_deconvolution(const vector_fp& x); 
+    vector_fp constrained_deconvolution(const vector_fp& x, size_t k); 
 
     vector_fp down_sampling(const vector_fp& x)
     {
@@ -195,6 +214,8 @@ private:
     doublereal **qp_D, **qp_C, **qp_A;
     doublereal *qp_l, *qp_u;
     bool *qp_fl, *qp_fu;
+    // deconvolution option
+    bool use_constrained_qp;
 
     // species production term
     Array2D m_wdot_fine;
