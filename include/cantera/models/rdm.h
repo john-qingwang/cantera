@@ -4,19 +4,61 @@
 #include "cantera/numerics/DenseMatrix.h"
 #include "ModelGeneric.h"
 
+#include <CGAL/basic.h>
+#include <CGAL/QP_models.h>
+#include <CGAL/QP_functions.h>
+
+// choose exact integral type
+// #ifdef CGAL_USE_GMP
+// #include <CGAL/Gmpz.h>
+// typedef CGAL::Gmpz ET;
+// #else
+#include <CGAL/MP_Float.h>
+typedef CGAL::MP_Float ET;
+// #endif
+
 namespace Cantera
 {
 
 class RDM: public ModelGeneric
 {
+
 public:
+    // for optimization
+    typedef CGAL::Quadratic_program_from_iterators
+    <double**,                                                // for A
+     double*,                                                 // for b
+     CGAL::Const_oneset_iterator<CGAL::Comparison_result>,    // for r
+     bool*,                                                   // for fl
+     double*,                                                 // for l
+     bool*,                                                   // for fu
+     double*,                                                 // for u
+     double**,                                                // for D
+     double*>                                                 // for c 
+     Program;
+    typedef CGAL::Quadratic_program_solution<ET> Solution;
+
     RDM() : ModelGeneric(nullptr), opt_interp(1), spline_bc(1) {};
 
     RDM(StFlow* const sf_) : ModelGeneric(sf_), opt_interp(1), spline_bc(1)  {};
 
     RDM(StFlow* const sf_, size_t delta);
 
-    ~RDM() {};
+    ~RDM() 
+    {
+        delete[] qp_l;
+        delete[] qp_u;
+        delete[] qp_fl;
+        delete[] qp_fu;
+        delete[] qp_A[0];
+        delete[] qp_A;
+        for (size_t j = 0; j < m_nz; j++) {
+            delete[] qp_D[j];
+            delete[] qp_C[j];
+        }
+        delete[] qp_D;
+        delete[] qp_C;
+    };
 
     // derived function from generic class
     void model_diff() {};
@@ -32,22 +74,28 @@ public:
 
     void update_grid();
 
+    void update_filter_width(size_t delta_new)
+    {
+        m_delta = delta_new;
+        update_grid();
+    }
+
     void update_interp_method(std::string interp_method)
     {
         opt_interp_s = interp_method;
-        update_grid();
+        interp_factory(sf->grid());
     }
 
     void update_spline_bc(std::string spline_bc_new)
     {
         spline_bc_s = spline_bc_new;
-        update_grid();
+        interp_factory(sf->grid());
     }
 
-    void update_filter_width(size_t delta_new)
+    void update_regularization_amplification(doublereal alpha_amp_)
     {
-        m_delta = delta_new;
-        update_grid();
+        alpha_amp = alpha_amp_;
+        operator_init();
     }
 
     size_t nPoints() {
@@ -67,6 +115,16 @@ public:
     doublereal wdot_fine(size_t k, size_t j)
     {
         return m_wdot_fine(k,j);
+    }
+
+    void model_summary()
+    {
+        std::cout << " RDM operator summary " << std::endl;
+        std::cout << " ==================== " << std::endl;
+        std::cout << " Filter width : " << std::setw(5) << m_delta << std::endl;
+        std::cout << " Reg. Amp.    : " << std::setw(5) << alpha_amp << std::endl;
+        std::cout << " Interp size  : " << std::setw(5) << m_nz << std::endl;
+        std::cout << " Interp method: " << opt_interp_s << std::endl;
     }
 
     void interp_factory(const vector_fp& z);
@@ -93,6 +151,8 @@ public:
 
     void subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv);
 
+    vector_fp constrained_deconvolution(const vector_fp& x); 
+
     vector_fp down_sampling(const vector_fp& x)
     {
         vector_fp xnew;
@@ -108,6 +168,8 @@ private:
 
     // filter width
     size_t m_delta;
+    // regularization factor
+    doublereal alpha,alpha_amp;
     // number of grid points in the original grid
     size_t m_npts;
     // number of grid points in the interpolation grid
@@ -129,6 +191,10 @@ private:
     DenseMatrix m_Q;
     // base subgrid contribution matrix (I - Q*G)
     DenseMatrix m_SG;
+    // constrained optimization
+    doublereal **qp_D, **qp_C, **qp_A;
+    doublereal *qp_l, *qp_u;
+    bool *qp_fl, *qp_fu;
 
     // species production term
     Array2D m_wdot_fine;

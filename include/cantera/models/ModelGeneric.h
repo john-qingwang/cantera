@@ -1,6 +1,7 @@
 #ifndef CT_MODEL_GENERIC_H
 #define CT_MODEL_GENERIC_H
 
+#include <iomanip>
 #include "cantera/oneD/StFlow.h"
 
 namespace Cantera
@@ -30,6 +31,8 @@ public:
         sf = sf_;
         m_wdot.resize(sf_->phase().nSpecies(),sf_->nPoints());
     }
+
+    virtual void model_summary() {};
 
     doublereal wdot_orig(size_t k, size_t j)
     {

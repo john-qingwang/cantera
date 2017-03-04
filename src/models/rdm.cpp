@@ -8,6 +8,7 @@ RDM::RDM(StFlow* const sf_, size_t delta) :
 {
     opt_interp_s = "spline";
     spline_bc_s = "parabolic-run-out";
+    alpha_amp = 1.0;
 
     update_grid();
 
@@ -87,6 +88,19 @@ void RDM::update_grid()
     m_z[m_nz-1] = z[m_npts-1];
 
     // interpolation matrix
+    interp_factory(z);
+
+    // filter and deconvolution operators
+    operator_init();
+
+    // solution arrays
+    m_wdot.resize(sf->phase().nSpecies(),m_npts,0.0); m_wdot*=0.0;
+    m_wdot_fine.resize(sf->phase().nSpecies(),m_nz,0.0); m_wdot_fine*=0.0;
+
+}
+
+void RDM::interp_factory(const vector_fp& z)
+{
     if (opt_interp_s.compare("spline")==0) {
         opt_interp = 1;
         if (spline_bc_s.compare("free-run-out")==0) {
@@ -100,22 +114,7 @@ void RDM::update_grid()
         }
     }
     m_interp.resize(m_nz,m_npts,0.0); m_interp*=0.0;
-    interp_factory(z);
 
-    // filter and deconvolution operators
-    m_G.resize(m_nz,m_nz,0.0); m_G*=0.0;
-    m_Q.resize(m_nz,m_nz,0.0); m_Q*=0.0;
-    m_SG.resize(m_nz,m_nz,0.0); m_SG*=0.0;
-    operator_init();
-
-    // solution arrays
-    m_wdot.resize(sf->phase().nSpecies(),m_npts,0.0); m_wdot*=0.0;
-    m_wdot_fine.resize(sf->phase().nSpecies(),m_nz,0.0); m_wdot_fine*=0.0;
-
-}
-
-void RDM::interp_factory(const vector_fp& z)
-{
     switch (opt_interp) {
     case 1: {
                 // Spline interpolation
@@ -208,6 +207,10 @@ void RDM::interp_factory(const vector_fp& z)
 
 void RDM::operator_init()
 {
+    m_G.resize(m_nz,m_nz,0.0); m_G*=0.0;
+    m_Q.resize(m_nz,m_nz,0.0); m_Q*=0.0;
+    m_SG.resize(m_nz,m_nz,0.0); m_SG*=0.0;
+
     size_t half_delta = (m_delta-1)/2;
     // filter operator
     for (size_t i=0; i<m_nz; i++) {
@@ -234,12 +237,12 @@ void RDM::operator_init()
     }
     DenseMatrix G2(m_nz,m_nz,0.0);
     GT.mult(m_G,G2);
-    doublereal alpha = 0.0;
+    alpha = 0.0;
     for (size_t i=0; i<m_nz; i++) {
         alpha += G2(i,i);
     }
     alpha /= (doublereal)m_nz;
-    alpha *= 10;
+    alpha *= alpha_amp;
     m_Q = m_G;
     m_Q *= -1.0;
     m_Q += I;
@@ -257,6 +260,33 @@ void RDM::operator_init()
     m_Q.mult(m_G,m_SG);
     m_SG *= -1.0;
     m_SG += I;
+
+    // Initialization for matrices used in constained optimization
+    qp_D = new doublereal*[m_nz];
+    qp_C = new doublereal*[m_nz];
+    for (size_t i = 0; i < m_nz; i++) {
+        qp_D[i] = new doublereal[m_nz];
+        qp_C[i] = new doublereal[m_nz];
+        for (size_t j = 0; j < m_nz; j++) {
+            qp_D[i][j] = ( G2(i,j) + alpha*I(i,j))*2.0;
+            qp_C[i][j] =-(m_G(i,j) + alpha*I(i,j))*2.0;
+        }
+    }
+    qp_A = new doublereal*[m_nz];
+    for (size_t j = 0; j < m_nz; j++) {
+        qp_A[j] = new doublereal[1];
+        qp_A[j][0] = 1.0;
+    }
+    qp_l  = new doublereal[m_nz];
+    qp_u  = new doublereal[m_nz];
+    qp_fl = new bool[m_nz];
+    qp_fu = new bool[m_nz];
+    for (size_t j = 0; j < m_nz; j++) {
+        qp_l[j]  = 0.0;
+        qp_u[j]  = 1.0;
+        qp_fl[j] = true;
+        qp_fu[j] = true;
+    }
 
     /* for debug
     std::ofstream debug_file;
@@ -331,6 +361,47 @@ void RDM::subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv)
         ++it3;
     }
        
+}
+
+vector_fp RDM::constrained_deconvolution(const vector_fp& x) {
+    assert(x.size()==m_nz);
+    doublereal* qp_c = new doublereal[m_nz];
+    doublereal* qp_b = new doublereal[1];
+    doublereal qp_c0 = 0.0;
+    qp_b[0] = 0.0;
+    for (size_t j = 0; j < m_nz; j++) {
+        qp_c[j] = 0.0;
+    }
+    size_t i = 0;
+    for (auto it = x.begin(); it != x.end(); ++it) {
+        qp_c0 += std::pow(*it,2.0);
+        qp_b[0] += (*it);
+        for (size_t j = 0; j < m_nz; j++) {
+            qp_c[j] += (*it)*qp_C[i][j];
+        }
+        i++;
+    }
+    qp_c0 *= (1.0+alpha);
+
+    // linear constraint is "="
+    CGAL::Const_oneset_iterator<CGAL::Comparison_result> 
+          r(    CGAL::EQUAL);                 	 
+    // now construct the quadratic program; the first two parameters are
+    // the number of variables and the number of constraints (rows of A)
+    Program qp (m_nz, 1, qp_A, qp_b, r, qp_fl, qp_l, qp_fu, qp_u, qp_D, qp_c, qp_c0);
+    // solve the program, using ET as the exact type
+    Solution s = CGAL::solve_quadratic_program(qp, ET());
+    // output solution
+    // std::cout << s;
+    vector_fp sol;
+    for (auto it = s.variable_values_begin(); it != s.variable_values_end(); ++it) {
+        sol.push_back(to_double(*it));
+    }
+
+    delete[] qp_c;
+    delete[] qp_b;
+
+    return sol;
 }
 
 } // Cantera

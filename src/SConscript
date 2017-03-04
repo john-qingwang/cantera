@@ -88,6 +88,9 @@ if localenv['blas_lapack_libs']:
 if localenv['system_fmt']:
     localenv.Append(LIBS='fmt')
 
+# link to CGAL library
+localenv.Append(LIBS=['gmp','CGAL','CGAL_Core'])
+
 # Build the Cantera shared library
 if localenv['layout'] != 'debian':
     if localenv['renamed_shared_libraries']:
