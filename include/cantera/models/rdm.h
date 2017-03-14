@@ -74,6 +74,11 @@ public:
 
     void update_grid();
 
+    void update_filter_type(std::string filter_type_) {
+        filter_type = filter_type_;
+        operator_init();
+    }
+
     void update_filter_width(size_t delta_new)
     {
         m_delta = delta_new;
@@ -102,8 +107,13 @@ public:
     {
         if (deconv_opt.compare("constrained")==0) {
             use_constrained_qp = true;
+            use_Landweber = false;
+        } else if (deconv_opt.compare("Landweber")==0) {
+            use_constrained_qp = false;
+            use_Landweber = true;
         } else {
             use_constrained_qp = false;
+            use_Landweber = false;
         }
     }
 
@@ -130,6 +140,7 @@ public:
     {
         std::cout << " RDM operator summary " << std::endl;
         std::cout << " ==================== " << std::endl;
+        std::cout << " Filter type  : " << filter_type << std::endl;
         std::cout << " Filter width : " << std::setw(5) << m_delta << std::endl;
         std::cout << " Reg. Amp.    : " << std::setw(5) << alpha_amp << std::endl;
         std::cout << " Interp size  : " << std::setw(5) << m_nz << std::endl;
@@ -137,6 +148,8 @@ public:
         std::cout << " Deconvolution: ";
         if (use_constrained_qp) {
             std::cout << "constrained" << std::endl;
+        } else if (use_Landweber) {
+            std::cout << "Landweber" << std::endl;
         } else {
             std::cout << "unconstrained" << std::endl;
         }
@@ -149,6 +162,9 @@ public:
     vector_fp interpolation(const vector_fp& x)
     {
         assert(m_interp.nColumns()==x.size());
+        if (opt_interp_s.compare("ENO")==0) {
+            update_ENO_interp(x);
+        }
         return mat_vec_multiplication(m_interp,x);
     }
 
@@ -157,8 +173,20 @@ public:
         assert(x.size()==m_nz);
         if (use_constrained_qp) {
             return constrained_deconvolution(x,k);
+        } else if (use_Landweber) {
+            return Landweber_deconvolution(x,k);
         } else {
-            return mat_vec_multiplication(m_Q,x);
+            vector_fp sol = mat_vec_multiplication(m_Q,x);
+            if (k >= c_offset_Y) {
+                for (auto it = sol.begin(); it != sol.end(); ++it) {
+                    *it = std::min(std::max(*it, 0.0),1.0);
+                }
+            } else if (k == c_offset_T) {
+                for (auto it = sol.begin(); it != sol.end(); ++it) {
+                    *it = std::min(std::max(*it, 300.0),2500.0);
+                }
+            }
+            return sol;
         }
     }
 
@@ -172,6 +200,8 @@ public:
 
     vector_fp constrained_deconvolution(const vector_fp& x, size_t k); 
 
+    vector_fp Landweber_deconvolution(const vector_fp& x, size_t k);
+
     vector_fp down_sampling(const vector_fp& x)
     {
         vector_fp xnew;
@@ -184,6 +214,25 @@ public:
 
 private:
     vector_fp mat_vec_multiplication(const DenseMatrix& A,const vector_fp& x);
+
+    vector_fp Lagrange_polynomial(const vector_fp& z, const doublereal& m_z_i, const size_t idx_l, const size_t idx_r)
+    {
+        vector_fp coeff;
+        for (size_t j = idx_l; j <= idx_r; j++) {
+            doublereal num = 1.0;
+            doublereal den = 1.0;
+            for (size_t k = idx_l; k <= idx_r; k++) {
+                if (k == j) continue;
+                num *= (m_z_i -z[k]);
+                den *= (  z[j]-z[k]);
+            }
+            coeff.push_back(num/den);
+        }
+
+        return coeff;
+    }
+
+    void update_ENO_interp(const vector_fp& x);
 
     // filter width
     size_t m_delta;
@@ -201,10 +250,15 @@ private:
     // Spline interpolation
     int spline_bc;
     std::string spline_bc_s;
+    // ENO interpolation
+    size_t order;
+    std::vector<DenseMatrix> interp_pool;
+    DenseMatrix stencil_idx;
 
     // interpolation matrix
     DenseMatrix m_interp;
     // Filter matrix
+    std::string filter_type;
     DenseMatrix m_G;
     // deconvolution matrix
     DenseMatrix m_Q;
@@ -214,8 +268,12 @@ private:
     doublereal **qp_D, **qp_C, **qp_A;
     doublereal *qp_l, *qp_u;
     bool *qp_fl, *qp_fu;
+    // Landweber deconvolution
+    DenseMatrix lw_Greg;
+    size_t lw_niter;
     // deconvolution option
     bool use_constrained_qp;
+    bool use_Landweber;
 
     // species production term
     Array2D m_wdot_fine;

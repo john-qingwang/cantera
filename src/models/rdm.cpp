@@ -1,4 +1,5 @@
 #include "cantera/models/RDM.h"
+#include "cantera/numerics/eigen_dense.h"
 
 namespace Cantera
 {
@@ -8,8 +9,10 @@ RDM::RDM(StFlow* const sf_, size_t delta) :
 {
     opt_interp_s = "spline";
     spline_bc_s = "parabolic-run-out";
+    filter_type = "Tophat";
     alpha_amp = 1.0;
     use_constrained_qp = false;
+    use_Landweber = false;
 
     update_grid();
 
@@ -37,7 +40,8 @@ void RDM::getWdot(const doublereal* x)
         subgrid_reconstruction(sc_bar,sc_dcv);
         // Assemble the scalar k back into the mixed vector
         for (size_t i=0; i<m_nz; i++) {
-            xnew[k+i*nvar] = sc_dcv[i];
+            // xnew[k+i*nvar] = sc_dcv[i];
+            xnew[k+i*nvar] = sc_bar[i];
         }
     }
     // Compute the source term
@@ -59,6 +63,7 @@ void RDM::getWdot(const doublereal* x)
         // */
         vector_fp src_buf2 = down_sampling(src_buf);
         for (size_t j=0; j<m_npts; j++) {
+            // m_wdot(k,j) = src_buf2[j];
             doublereal sc_ = x[c_offset_Y+k+j*nvar];
             m_wdot(k,j) = ((src_buf2[j]>0.0 && std::abs(sc_-1.0)<1.0e-10) || 
                            (src_buf2[j]<0.0 && std::abs(sc_-0.0)<1.0e-10))
@@ -113,6 +118,10 @@ void RDM::interp_factory(const vector_fp& z)
         } else {
             spline_bc = 1;
         }
+    } else if (opt_interp_s.compare("Lagrange-polynomials")==0) {
+        opt_interp = 2;
+    } else if (opt_interp_s.compare("ENO")==0) {
+        opt_interp = 3;
     }
     m_interp.resize(m_nz,m_npts,0.0); m_interp*=0.0;
 
@@ -188,6 +197,84 @@ void RDM::interp_factory(const vector_fp& z)
 
                 break;
             }
+    case 2: {
+                order = 1;
+                size_t idx = 0;
+                for (size_t i = 0; i < m_nz; i++) {
+                    if (m_z[i] > z[idx+1]) {
+                        ++idx;
+                    }
+                    if (idx > m_npts-order-1) {
+                        vector_fp coeff = Lagrange_polynomial(z,m_z[i],m_npts-order-1,m_npts-1);
+                        auto it = coeff.begin();
+                        for (size_t j = m_npts-order-1; j < m_npts; j++) {
+                            m_interp(i,j) = (*it);
+                            ++it;
+                        }
+
+                    } else {
+                        vector_fp coeff = Lagrange_polynomial(z,m_z[i],idx,idx+order);
+                        auto it = coeff.begin();
+                        for (size_t j = idx; j <= idx+order; j++) {
+                            m_interp(i,j) = (*it);
+                            ++it;
+                        }
+                    }
+                }
+                break;
+            }
+    case 3: {
+                order = 5;
+                interp_pool.resize(order);
+                for (auto it = interp_pool.begin(); it != interp_pool.end(); ++it) {
+                    (*it).resize(m_nz,m_npts);
+                    (*it) *= 0.0;
+                }
+                stencil_idx.resize(m_nz,order);
+                stencil_idx *= 0.0;
+                
+                for (size_t s = 0; s < order; s++) {
+                    size_t idx = 0;
+                    for (size_t i = 0; i < m_nz; i++) {
+                        if (m_z[i] > z[idx+1]) {
+                            ++idx;
+                        }
+                        // left end index of stencil w.r.t current idx
+                        int l = idx - s;
+                        // right end index of stencil w.r.t current idx
+                        int r = l + order;
+                        // special case for stencil near the boundary
+                        if (l < 0) {
+                            vector_fp coeff = Lagrange_polynomial(z,m_z[i],0,order);
+                            auto it = coeff.begin();
+                            for (size_t j = 0; j <= order; j++) {
+                                interp_pool[s](i,j) = (*it);
+                                ++it;
+                            }
+                            
+                        } else if (r >= m_npts) {
+                            vector_fp coeff = Lagrange_polynomial(z,m_z[i],m_npts-order-1,m_npts-1);
+                            auto it = coeff.begin();
+                            for (size_t j = m_npts-order-1; j < m_npts; j++) {
+                                interp_pool[s](i,j) = (*it);
+                                ++it;
+                            }
+
+                        } else {
+                            vector_fp coeff = Lagrange_polynomial(z,m_z[i],l,r);
+                            auto it = coeff.begin();
+                            for (size_t j = l; j <= r; j++) {
+                                interp_pool[s](i,j) = (*it);
+                                ++it;
+                            }
+
+                        }
+                        stencil_idx(i,s) = std::min(std::max(l,0),(int)(m_npts-order-1));
+                    }
+                }
+                    
+                break;
+            }
     default: {
                  break;
              }
@@ -212,23 +299,44 @@ void RDM::operator_init()
     m_Q.resize(m_nz,m_nz,0.0); m_Q*=0.0;
     m_SG.resize(m_nz,m_nz,0.0); m_SG*=0.0;
 
-    size_t half_delta = (m_delta-1)/2;
     // filter operator
+    vector_fp m_G_;
+    int c = m_nz/2;
+    doublereal zc = m_z[c];
+    doublereal G_cum = 0.0;
+    for (size_t j=0; j<m_nz; j++) {
+        doublereal g_;
+        if (filter_type.compare("Tophat")==0) {
+            g_ = std::abs((int)j-c)<=m_delta/2? 1.0 : 0.0;
+        } else if (filter_type.compare("Differential")==0) {
+            doublereal delta_ = (doublereal)(m_delta-1)*(m_z[1]-m_z[0]);
+            g_ = std::exp(-std::abs(m_z[j]-zc)/delta_)/(2*delta_);
+        } else {
+            g_ = 1.0;
+        }
+        G_cum += g_;
+        m_G_.push_back(g_);
+    }
+    std::transform(m_G_.begin(),m_G_.end(),m_G_.begin(),std::bind1st(std::multiplies<doublereal>(),1.0/G_cum));;
+
     for (size_t i=0; i<m_nz; i++) {
-        int l_ = i-half_delta;
-        int r_ = i+half_delta;
+        int l_ = i-m_nz/2;
+        int r_ = i+m_nz/2-(m_nz+1)%2;
+        G_cum = 0.0;
         for (size_t j=std::max(0,l_); j<=std::min((int)(m_nz)-1,r_); j++) {
-            m_G(i,j) = 1.0/(doublereal)m_delta;
+            m_G(i,j) = m_G_[std::max(0,c-(int)i+(int)j)];
+            G_cum += m_G(i,j);
         }
         if (l_<0) {
-            m_G(i,0) = (1.0-(doublereal)l_)*m_G(i,0);
+            m_G(i,0) += (1.0-G_cum);
         } else if (r_>m_nz-1) {
-            m_G(i,m_nz-1) = (1.0+(doublereal)(r_-m_nz+1))*m_G(i,m_nz-1);
+            m_G(i,m_nz-1) += (1.0-G_cum);
         }
     }
 
     // deconvolution operator
     DenseMatrix I(m_nz,m_nz,0.0);
+    // filter and zeroth order regularization
     DenseMatrix GT(m_nz,m_nz,0.0);
     for (size_t i=0; i<m_nz; i++) {
         I(i,i) = 1.0;
@@ -244,18 +352,36 @@ void RDM::operator_init()
     }
     alpha /= (doublereal)m_nz;
     alpha *= alpha_amp;
-    m_Q = m_G;
-    m_Q *= -1.0;
-    m_Q += I;
-    DenseMatrix rhs(m_nz,m_nz,0.0);
-    GT.mult(m_Q,rhs);
+    // second order derivative regularization
+    DenseMatrix L(m_nz-2,m_nz,0.0);
+    DenseMatrix LT(m_nz,m_nz-2,0.0);
+    double dzmin = m_z[1]-m_z[0];
+    for (size_t i = 0; i < m_nz-2; i++) {
+        double dz_i  = m_z[i+1] - m_z[i];
+        double dz_ip = m_z[i+2] - m_z[i+1];
+        L(i,i  ) =  2.0/dz_i /(dz_i+dz_ip);
+        L(i,i+1) = -2.0/dz_i / dz_ip;
+        L(i,i+2) =  2.0/dz_ip/(dz_i+dz_ip);
+        LT(i  ,i) = L(i,i  );
+        LT(i+1,i) = L(i,i+1);
+        LT(i+2,i) = L(i,i+2);
+        dzmin = std::min(dzmin,dz_ip);
+    }
+    L *= std::pow(dzmin,2.0);
+    LT *= std::pow(dzmin,2.0);
+    DenseMatrix L2(m_nz,m_nz,0.0);
+    LT.mult(L,L2);
+    L2 *= alpha;
+    // compute the deconvolution operator
+    m_Q = I;
+    m_Q *= alpha;
+    m_Q += GT;
     DenseMatrix buf(m_nz,m_nz,0.0);
     buf = I;
     buf *= alpha;
     buf += G2;
-    solve(buf,rhs);
-    rhs += I;
-    m_Q = rhs;
+    buf += L2;
+    solve(buf,m_Q);
 
     // subgrid reconstruction operator
     m_Q.mult(m_G,m_SG);
@@ -289,12 +415,34 @@ void RDM::operator_init()
         qp_fu[j] = true;
     }
 
+    // Initialization for Landweber deconvolution
+    lw_niter = 5;
+    lw_Greg.resize(m_nz,m_nz,0.0); lw_Greg *= 0.0;
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> G_tmp;
+    G_tmp.resize(m_nz,m_nz);
+    for (size_t i = 0; i < m_nz; i++) {
+        doublereal lw_d = 0.0;
+        for (size_t j = 0; j < m_nz; j++) {
+            G_tmp(i,j) = m_G(i,j);
+            lw_d += std::pow(m_G(i,j),2.0);
+        }
+        lw_d = 1.0/lw_d/(doublereal)m_nz;
+        for (size_t j = 0; j < m_nz; j++) {
+            lw_Greg(j,i) = m_G(j,i)*lw_d;
+        }
+    }
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> G2_tmp;
+    G2_tmp.resize(m_nz,m_nz);
+    G2_tmp = G_tmp.transpose()*G_tmp;
+    doublereal lw_w = 1.0/G2_tmp.lpNorm<2>();
+    lw_Greg *= lw_w;
+
     /* for debug
     std::ofstream debug_file;
-    debug_file.open("mat_debug_Q.dat");
+    debug_file.open("mat_debug_G.dat");
     for (size_t i=0; i<m_Q.nRows(); i++) {
         for (size_t j=0; j<m_Q.nColumns(); j++) {
-            debug_file << m_Q(i,j) << ",";
+            debug_file << m_G(i,j) << ",";
         }
         debug_file << std::endl;
     }
@@ -364,7 +512,8 @@ void RDM::subgrid_reconstruction(const vector_fp& xbar, vector_fp& xdcv)
        
 }
 
-vector_fp RDM::constrained_deconvolution(const vector_fp& x, size_t k) {
+vector_fp RDM::constrained_deconvolution(const vector_fp& x, size_t k)
+{
     assert(x.size()==m_nz);
 
     // Update the constraints matrices
@@ -416,6 +565,59 @@ vector_fp RDM::constrained_deconvolution(const vector_fp& x, size_t k) {
     delete[] qp_b;
 
     return sol;
+}
+
+vector_fp RDM::Landweber_deconvolution(const vector_fp& x, size_t k)
+{
+    vector_fp sol(x.begin(),x.end());
+
+    for (size_t i = 0; i < lw_niter; i++) {
+        vector_fp buf = mat_vec_multiplication(m_G,sol);
+        auto it_x = x.begin();
+        for (auto it = buf.begin(); it != buf.end(); ++it) {
+            *it = (*it_x) - (*it);
+            ++it_x;
+        }
+        buf = mat_vec_multiplication(lw_Greg,buf);
+        it_x = buf.begin();
+        for (auto it = sol.begin(); it != sol.end(); ++it) {
+            if (k < c_offset_Y && k != c_offset_T) {
+                *it = (*it) + (*it_x);
+            } else if (k == c_offset_T) {
+                *it = std::min(std::max( (*it) + (*it_x), 300.0), 2500.0);
+            } else {
+                *it = std::min(std::max( (*it) + (*it_x), 0.0), 1.0);
+            }
+            ++it_x;
+        }
+    }
+    return sol;
+
+}
+
+void RDM::update_ENO_interp(const vector_fp& x)
+{
+    vector_fp v;
+    for (auto it = x.begin(); it != x.end(); ++it) {
+        v.push_back(*it);
+    }
+    for (size_t s = 0; s < order; s++) {
+        for (size_t i = 0; i < v.size()-1; i++) {
+            v[i] = (v[i+1]-v[i])/(sf->grid(i+s+1)-sf->grid(i));
+        }
+        v.resize(v.size()-1);
+    }
+    for (size_t i = 0; i < m_nz; i++) {
+        vector_fp v_;
+        for (size_t s = 0; s < order; s++) {
+            v_.push_back(std::abs(v[stencil_idx(i,s)]));
+        }
+        size_t idx = std::distance(v_.begin(),std::min_element(v_.begin(),v_.end()));
+        for (size_t j = 0; j < x.size(); j++) {
+            m_interp(i,j) = interp_pool[idx](i,j);
+        }
+    }
+       
 }
 
 } // Cantera
