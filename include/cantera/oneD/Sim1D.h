@@ -212,6 +212,12 @@ public:
         m_steady_callback = callback;
     }
 
+    //! Newton solver for one step
+    //! For development purpose only
+    int newtonSolveExt(int loglevel) {
+        return newtonSolve(loglevel);
+    }
+
 protected:
     //! the solution vector
     vector_fp m_x;

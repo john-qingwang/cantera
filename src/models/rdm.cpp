@@ -10,7 +10,9 @@ RDM::RDM(StFlow* const sf_, size_t delta) :
     opt_interp_s = "spline";
     spline_bc_s = "parabolic-run-out";
     filter_type = "Tophat";
+    delta_amp = 1.0;
     alpha_amp = 1.0;
+    gamma_amp = 1.0;
     use_constrained_qp = false;
     use_Landweber = false;
 
@@ -105,6 +107,27 @@ void RDM::update_grid()
 
 }
 
+void RDM::update_grid(const vector_fp& z_target)
+{
+    vector_fp z = sf->grid();
+    m_npts = z.size();
+
+    // fine mesh for interpolation
+    m_nz = z_target.size();
+    m_z = z_target;
+
+    // interpolation matrix
+    interp_factory(z);
+
+    // filter and deconvolution operators
+    operator_init();
+
+    // solution arrays
+    m_wdot.resize(sf->phase().nSpecies(),m_npts,0.0); m_wdot*=0.0;
+    m_wdot_fine.resize(sf->phase().nSpecies(),m_nz,0.0); m_wdot_fine*=0.0;
+
+}
+
 void RDM::interp_factory(const vector_fp& z)
 {
     if (opt_interp_s.compare("spline")==0) {
@@ -179,7 +202,7 @@ void RDM::interp_factory(const vector_fp& z)
                 size_t i_src = 0;
                 for (size_t i=0; i<m_nz; i++) {
                     doublereal z_ = m_z[i];
-                    if (z_>z[i_src+1]) {
+                    while (z_>z[i_src+1]) {
                         i_src++;
                     }
                     doublereal z_i  = z[i_src];
@@ -201,7 +224,7 @@ void RDM::interp_factory(const vector_fp& z)
                 order = 1;
                 size_t idx = 0;
                 for (size_t i = 0; i < m_nz; i++) {
-                    if (m_z[i] > z[idx+1]) {
+                    while (m_z[i] > z[idx+1]) {
                         ++idx;
                     }
                     if (idx > m_npts-order-1) {
@@ -236,7 +259,7 @@ void RDM::interp_factory(const vector_fp& z)
                 for (size_t s = 0; s < order; s++) {
                     size_t idx = 0;
                     for (size_t i = 0; i < m_nz; i++) {
-                        if (m_z[i] > z[idx+1]) {
+                        while (m_z[i] > z[idx+1]) {
                             ++idx;
                         }
                         // left end index of stencil w.r.t current idx
@@ -310,6 +333,7 @@ void RDM::operator_init()
             g_ = std::abs((int)j-c)<=m_delta/2? 1.0 : 0.0;
         } else if (filter_type.compare("Differential")==0) {
             doublereal delta_ = (doublereal)(m_delta-1)*(m_z[1]-m_z[0]);
+            delta_ = delta_amp * delta_;
             g_ = std::exp(-std::abs(m_z[j]-zc)/delta_)/(2*delta_);
         } else {
             g_ = 1.0;
@@ -346,12 +370,14 @@ void RDM::operator_init()
     }
     DenseMatrix G2(m_nz,m_nz,0.0);
     GT.mult(m_G,G2);
+    // regularization parameters
     alpha = 0.0;
     for (size_t i=0; i<m_nz; i++) {
         alpha += G2(i,i);
     }
     alpha /= (doublereal)m_nz;
-    alpha *= alpha_amp;
+    doublereal alpha_ = alpha * alpha_amp;
+    doublereal gamma_ = alpha * gamma_amp;
     // second order derivative regularization
     DenseMatrix L(m_nz-2,m_nz,0.0);
     DenseMatrix LT(m_nz,m_nz-2,0.0);
@@ -371,14 +397,14 @@ void RDM::operator_init()
     LT *= std::pow(dzmin,2.0);
     DenseMatrix L2(m_nz,m_nz,0.0);
     LT.mult(L,L2);
-    L2 *= alpha;
+    L2 *= gamma_;
     // compute the deconvolution operator
     m_Q = I;
-    m_Q *= alpha;
+    m_Q *= alpha_;
     m_Q += GT;
     DenseMatrix buf(m_nz,m_nz,0.0);
     buf = I;
-    buf *= alpha;
+    buf *= alpha_;
     buf += G2;
     buf += L2;
     solve(buf,m_Q);

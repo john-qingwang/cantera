@@ -74,6 +74,8 @@ public:
 
     void update_grid();
 
+    void update_grid(const vector_fp& z_target);
+
     void update_filter_type(std::string filter_type_) {
         filter_type = filter_type_;
         operator_init();
@@ -97,9 +99,11 @@ public:
         interp_factory(sf->grid());
     }
 
-    void update_regularization_amplification(doublereal alpha_amp_)
+    void update_parameter_amplification(doublereal delta_amp_,doublereal alpha_amp_, doublereal gamma_amp_)
     {
+        delta_amp = delta_amp_;
         alpha_amp = alpha_amp_;
+        gamma_amp = gamma_amp_;
         operator_init();
     }
 
@@ -237,7 +241,7 @@ private:
     // filter width
     size_t m_delta;
     // regularization factor
-    doublereal alpha,alpha_amp;
+    doublereal alpha,alpha_amp,gamma_amp,delta_amp;
     // number of grid points in the original grid
     size_t m_npts;
     // number of grid points in the interpolation grid
