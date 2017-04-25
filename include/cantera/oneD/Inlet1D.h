@@ -314,6 +314,68 @@ protected:
     vector_fp m_fixed_cov;
 };
 
+/**
+ * A spray inlet.
+ * @ingroup onedim
+ */
+class SprayInlet1D : public Inlet1D
+{
+public:
+
+    SprayInlet1D();
+
+    void setNumberDensity(const doublereal nl) {
+        m_nl0 = nl;
+    }
+
+    void setDropletMass(const doublereal ml) {
+        m_ml0 = ml;
+    }
+
+    void setDropletInjectionVel(const doublereal vl) {
+        m_vl0 = vl;
+    }
+
+    void setDropletSpreadVel(const doublereal Ul) {
+        m_Ul0 = Ul;
+    }
+
+    void setDropletTemperature(const doublereal Tl) {
+        m_Tl0 = Tl;
+    }
+
+    virtual void init();
+
+    virtual void eval(size_t jg, doublereal* xg, doublereal* rg,
+                  integer* diagg, doublereal rdt);
+
+protected:
+
+    doublereal m_nl0;
+    doublereal m_vl0;
+    doublereal m_Ul0;
+    doublereal m_Tl0;
+    doublereal m_ml0;
+
+};
+
+/**
+ * A spray outlet.
+ * @ingroup onedim
+ */
+class SprayOutlet1D : public Inlet1D
+{
+public:
+
+    SprayOutlet1D() : Inlet1D() {}
+
+    virtual void init();
+
+    virtual void eval(size_t jg, doublereal* xg, doublereal* rg,
+                  integer* diagg, doublereal rdt);
+
+};
+
 }
 
 #endif

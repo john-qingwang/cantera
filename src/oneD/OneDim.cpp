@@ -223,12 +223,36 @@ void OneDim::resize()
 
 int OneDim::solve(doublereal* x, doublereal* xnew, int loglevel)
 {
+    std::ofstream debug_file;
+
     if (!m_jac_ok) {
         eval(npos, x, xnew, 0.0, 0);
+        // debug
+        debug_file.open("lhs.csv");
+        for (size_t i = 0; i < m_jac->nRows(); i++) {
+            debug_file << x[i] << std::endl;
+        }
+        debug_file.close();
+        debug_file.open("rhs.csv");
+        for (size_t i = 0; i < m_jac->nRows(); i++) {
+            debug_file << xnew[i] << std::endl;
+        }
+        debug_file.close();
+
         m_jac->eval(x, xnew, 0.0);
         m_jac->updateTransient(m_rdt, m_mask.data());
         m_jac_ok = true;
     }
+
+    // check the Jacobian
+    debug_file.open("jac.csv");
+    for (size_t i = 0; i < m_jac->nRows(); i++) {
+        for (size_t j = 0; j < m_jac->nColumns(); j++) {
+            debug_file << m_jac->value(i,j) << ",";
+        }
+        debug_file << std::endl;
+    }
+    debug_file.close();
 
     return m_newt->solve(x, xnew, *this, *m_jac, loglevel);
 }

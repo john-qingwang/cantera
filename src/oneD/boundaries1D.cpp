@@ -741,4 +741,119 @@ void ReactingSurf1D::showSolution(const double* x)
     }
     writelog("\n");
 }
+
+// -------- SprayInlet1D --------
+//
+SprayInlet1D::SprayInlet1D() :
+    Inlet1D(), m_nl0(0), m_vl0(0), m_Ul0(0), m_Tl0(300.0), m_ml0(0)
+{}
+
+void SprayInlet1D::init()
+{
+    Inlet1D::init();
+    m_nsp = m_nsp - c_offset_nl - 1;
+}
+
+void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
+            integer* diagg, doublereal rdt)
+{
+    Inlet1D::eval(jg, xg, rg, diagg, rdt);
+    if (jg != npos && (jg + 2 < firstPoint() || jg > lastPoint() + 2)) {
+        return;
+    }
+
+    double* rb;
+    if (m_ilr == LeftInlet) {
+        // Array elements corresponding to the first point of the flow domain
+        rb = rg + m_flow->loc();
+    } else {
+        // right inlet
+        // Array elements corresponding to the flast point in the flow domain
+        rb = rg + loc() - m_flow->nComponents();
+    }
+
+    // The first flow residual is for u. This, however, is not modified by
+    // the inlet, since this is set within the flow domain from the
+    // continuity equation.
+
+    // spreading rate. The flow domain sets this to V(0),
+    // so for finite spreading rate subtract m_V0.
+    rb[c_offset_Y+nSpecies()+c_offset_Ul] -= m_Ul0;
+
+    rb[c_offset_Y+nSpecies()+c_offset_vl] -= m_vl0;
+
+    // The third flow residual is for T, where it is set to T(0).  Subtract
+    // the local temperature to hold the flow T to the inlet T.
+    rb[c_offset_Y+nSpecies()+c_offset_Tl] -= m_Tl0;
+
+    // rb[c_offset_Y+nSpecies()+c_offset_nl] += (m_vl0 * m_nl0);
+    // rb[c_offset_Y+nSpecies()+c_offset_nl] -= m_nl0;
+
+    // rb[c_offset_Y+nSpecies()+c_offset_ml] -= m_ml0;
+
+}
+
+// -------- SprayInlet1D --------
+//
+void SprayOutlet1D::init()
+{
+    Inlet1D::init();
+    m_nsp = m_nsp - c_offset_nl - 1;
+}
+
+void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* diagg,
+                    doublereal rdt)
+{
+    Inlet1D::eval(jg, xg, rg, diagg, rdt);
+
+    if (jg != npos && (jg + 2 < firstPoint() || jg > lastPoint() + 2)) {
+        return;
+    }
+
+    // start of local part of global arrays
+    doublereal* x = xg + loc() + c_offset_Y + nSpecies();
+    doublereal* r = rg + loc() + c_offset_Y + nSpecies();
+    integer* diag = diagg + loc() + c_offset_Y + nSpecies();
+
+    if (m_flow_right) {
+        size_t nc = m_flow_right->nComponents();
+        double* xb = x;
+        double* rb = r;
+        int* db = diag;
+
+        rb[c_offset_Ul] = xb[c_offset_Ul] - xb[c_offset_Ul + nc];
+        rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl + nc];
+        rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl + nc];
+        rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml + nc];
+        rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl + nc];
+
+        db[c_offset_Ul] = 0;
+        db[c_offset_vl] = 0; 
+        db[c_offset_Tl] = 0;
+        db[c_offset_ml] = 0;
+        db[c_offset_nl] = 0;
+
+    }
+
+    if (m_flow_left) {
+        size_t nc = m_flow_left->nComponents();
+        double* xb = x - nc;
+        double* rb = r - nc;
+        int* db = diag - nc;
+
+        rb[c_offset_Ul] = xb[c_offset_Ul] - xb[c_offset_Ul - nc];
+        rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl - nc];
+        rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl - nc];
+        rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml - nc];
+        rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl - nc];
+
+        db[c_offset_Ul] = 0;
+        db[c_offset_vl] = 0; 
+        db[c_offset_Tl] = 0;
+        db[c_offset_ml] = 0;
+        db[c_offset_nl] = 0;
+
+    }
+}
+
 }
