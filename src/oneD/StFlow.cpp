@@ -1040,6 +1040,13 @@ SprayFlame::SprayFlame(IdealGasPhase* ph, size_t nsp, size_t points) :
 {
     m_nv = c_offset_Y+m_nsp+c_offset_nl+1;
     Domain1D::resize(m_nv,points);
+
+    setBounds(c_offset_Y+m_nsp+c_offset_Ul, -1e20, 1e20); // no bounds on Ul
+    setBounds(c_offset_Y+m_nsp+c_offset_vl, -1e20, 1e20); // no bounds on Ul
+    setBounds(c_offset_Y+m_nsp+c_offset_Tl, 200.0, 5000.0); // no bounds on Ul
+    setBounds(c_offset_Y+m_nsp+c_offset_ml, -1e-7, 1e20); // no bounds on Ul
+    setBounds(c_offset_Y+m_nsp+c_offset_nl, -1e-7, 1e20); // no bounds on Ul
+
     setID("spray flame");
     // CHANGE HERE 
     // (default is water)
@@ -1259,7 +1266,6 @@ void SprayFlame::evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
         -(nl_vl(x,j+1) - nl_vl(x,j))/m_dz[j]
         -(nl_Ul(x,j+1) + nl_Ul(x,j));
 
-    //algebraic constraint
     diag[index(c_offset_Y+m_nsp+c_offset_nl, j)] = 0;
 }
 
@@ -1274,7 +1280,6 @@ void SprayFlame::evalRightBoundaryLiquid(doublereal* x, doublereal* rsd,
     rsd[index(c_offset_Y+m_nsp+c_offset_vl,j)] = vl(x,j) - vl(x,j-1);
     rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] = Tl(x,j) - Tl(x,j-1);
     rsd[index(c_offset_Y+m_nsp+c_offset_ml,j)] = ml(x,j) - ml(x,j-1);
-    // rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] = -nl_vl(x,j);
     rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] = nl(x,j) - nl(x,j-1);
     diag[index(c_offset_Y+m_nsp+c_offset_Ul, j)] = 0;
     diag[index(c_offset_Y+m_nsp+c_offset_vl, j)] = 0;
@@ -1346,5 +1351,30 @@ size_t SprayFlame::componentIndex(const std::string& name) const
     return npos;
 }
 
+XML_Node& SprayFlame::save(XML_Node& o, const doublereal* const sol)
+{
+    Array2D soln(m_nv, m_points, sol + loc());
+    XML_Node& flow = StFlow::save(o, sol);
+
+    XML_Node& gv = flow.addChild("liq_grid_data");
+    vector_fp x(soln.nColumns());
+
+    soln.getRow(componentIndex("Ul"), x.data());
+    addFloatArray(gv,"Ul",x.size(),x.data(),"m/s","liq. r velocity");
+
+    soln.getRow(componentIndex("vl"), x.data());
+    addFloatArray(gv,"vl",x.size(),x.data(),"m/s","liq. x velocity");
+
+    soln.getRow(componentIndex("Tl"), x.data());
+    addFloatArray(gv,"Tl",x.size(),x.data(),"K","liq. temperature");
+
+    soln.getRow(componentIndex("ml"), x.data());
+    addFloatArray(gv,"ml",x.size(),x.data(),"kg","droplet mass");
+
+    soln.getRow(componentIndex("nl"), x.data());
+    addFloatArray(gv,"nl",x.size(),x.data(),"/m^3","number density");
+
+    return flow;
+}
 
 } // namespace

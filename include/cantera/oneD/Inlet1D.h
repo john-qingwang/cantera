@@ -349,6 +349,7 @@ public:
     virtual void eval(size_t jg, doublereal* xg, doublereal* rg,
                   integer* diagg, doublereal rdt);
 
+    virtual XML_Node& save(XML_Node& o, const doublereal* const soln);
 protected:
 
     doublereal m_nl0;
@@ -356,6 +357,8 @@ protected:
     doublereal m_Ul0;
     doublereal m_Tl0;
     doublereal m_ml0;
+
+    SprayFlame* m_spFlow;
 
 };
 
@@ -373,6 +376,12 @@ public:
 
     virtual void eval(size_t jg, doublereal* xg, doublereal* rg,
                   integer* diagg, doublereal rdt);
+
+    virtual XML_Node& save(XML_Node& o, const doublereal* const soln);
+
+protected:
+
+    SprayFlame* m_spFlow;
 
 };
 

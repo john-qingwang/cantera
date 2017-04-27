@@ -514,6 +514,10 @@ public:
  */
 class SprayFlame : public AxiStagnFlow
 {
+
+friend class SprayInlet1D;
+friend class SprayOutlet1D;
+
 public:
     SprayFlame(IdealGasPhase* ph = 0, size_t nsp = 1, size_t points = 1);
 
@@ -529,6 +533,8 @@ public:
     virtual std::string componentName(size_t n) const;
 
     virtual size_t componentIndex(const std::string& name) const;
+
+    virtual XML_Node& save(XML_Node& o, const doublereal* const sol);
 
     virtual std::string flowType() {
         return "Axisymmetric Spray Stagnation";
@@ -649,13 +655,13 @@ protected:
         setGas(x,j);
         doublereal Yr = 2.0/3.0*Yrs(x,j) + 1.0/3.0*Y(x,c_offset_fuel,j);
         vector_fp cp_R = m_thermo->cp_R_ref();
-        return Yr*cp_R[c_offset_fuel] + (1.0-Yr)*m_cp[j];
+        return Yr*GasConstant*cp_R[c_offset_fuel] + (1.0-Yr)*m_cp[j];
     }
 
     doublereal Yrs(const doublereal* x, size_t j) {
         doublereal Xrs = prs(x,j)/m_press;
         doublereal Yrs = m_wt[c_offset_fuel]*Xrs / 
-                        (m_wt[c_offset_fuel]*Xrs - 
+                        (m_wt[c_offset_fuel]*Xrs + 
                          (1.0 - Xrs)*m_wtm[j]);
         return Yrs;
     }

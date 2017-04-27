@@ -752,6 +752,7 @@ void SprayInlet1D::init()
 {
     Inlet1D::init();
     m_nsp = m_nsp - c_offset_nl - 1;
+    m_spFlow = (SprayFlame*)m_flow;
 }
 
 void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
@@ -789,7 +790,35 @@ void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
     // rb[c_offset_Y+nSpecies()+c_offset_nl] += (m_vl0 * m_nl0);
     // rb[c_offset_Y+nSpecies()+c_offset_nl] -= m_nl0;
 
-    // rb[c_offset_Y+nSpecies()+c_offset_ml] -= m_ml0;
+    rb[c_offset_Y+nSpecies()+c_offset_ml] -= m_ml0;
+
+}
+
+XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
+{
+    XML_Node& inlt = Inlet1D::save(o, soln);
+    XML_Node& gv = inlt.addChild("spray_inlet");
+
+    const double* sol  = soln + m_flow->loc() + c_offset_Y + nSpecies();
+
+    addFloat(gv, "Ul", sol[c_offset_Ul]);
+    addFloat(gv, "vl", sol[c_offset_vl]);
+    addFloat(gv, "Tl", sol[c_offset_Tl]);
+    addFloat(gv, "ml", sol[c_offset_ml]);
+    addFloat(gv, "nl", sol[c_offset_nl]);
+
+    // addFloat(gv, "Dgf", m_spFlow->Dgf(0));
+    // addFloat(gv, "prs", m_spFlow->prs(soln,0));
+    // addFloat(gv, "Lv", m_spFlow->Lv());
+    // addFloat(gv, "cpl", m_spFlow->cpl(soln,0));
+    // addFloat(gv, "cpgf", m_spFlow->cpgf(soln,0));
+    // addFloat(gv, "Yrs", m_spFlow->Yrs(soln,0));
+    // addFloat(gv, "mdot", m_spFlow->mdot(soln,0));
+    // addFloat(gv, "q", m_spFlow->q(soln,0));
+    // addFloat(gv, "Fr", m_spFlow->Fr(soln,0));
+    // addFloat(gv, "fz", m_spFlow->fz(soln,0));
+
+    return inlt;
 
 }
 
@@ -799,6 +828,7 @@ void SprayOutlet1D::init()
 {
     Inlet1D::init();
     m_nsp = m_nsp - c_offset_nl - 1;
+    m_spFlow = (SprayFlame*)m_flow;
 }
 
 void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* diagg,
@@ -854,6 +884,34 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
         db[c_offset_nl] = 0;
 
     }
+}
+
+XML_Node& SprayOutlet1D::save(XML_Node& o, const doublereal* const soln)
+{
+    XML_Node& inlt = Inlet1D::save(o, soln);
+    XML_Node& gv = inlt.addChild("spray_outlet");
+
+    const double* sol = soln + m_flow->loc() + c_offset_Y + nSpecies();
+
+    addFloat(gv, "Ul", sol[c_offset_Ul]);
+    addFloat(gv, "vl", sol[c_offset_vl]);
+    addFloat(gv, "Tl", sol[c_offset_Tl]);
+    addFloat(gv, "ml", sol[c_offset_ml]);
+    addFloat(gv, "nl", sol[c_offset_nl]);
+
+    // addFloat(gv, "Dgf", m_spFlow->Dgf(lastPoint()));
+    // addFloat(gv, "prs", m_spFlow->prs(soln,lastPoint()));
+    // addFloat(gv, "Lv", m_spFlow->Lv());
+    // addFloat(gv, "cpl", m_spFlow->cpl(soln,lastPoint()));
+    // addFloat(gv, "cpgf", m_spFlow->cpgf(soln,lastPoint()));
+    // addFloat(gv, "Yrs", m_spFlow->Yrs(soln,lastPoint()));
+    // addFloat(gv, "mdot", m_spFlow->mdot(soln,lastPoint()));
+    // addFloat(gv, "q", m_spFlow->q(soln,lastPoint()));
+    // addFloat(gv, "Fr", m_spFlow->Fr(soln,lastPoint()));
+    // addFloat(gv, "fz", m_spFlow->fz(soln,lastPoint()));
+
+    return inlt;
+
 }
 
 }
