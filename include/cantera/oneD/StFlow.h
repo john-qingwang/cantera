@@ -31,7 +31,6 @@ const size_t c_offset_Ul = 0; // liquid radial velocity
 const size_t c_offset_vl = 1; // liquid axial velocity
 const size_t c_offset_Tl = 2; // liquid temperature
 const size_t c_offset_ml = 3; // droplet mass
-const size_t c_offset_nl = 4; // number density
 const doublereal mmHg2Pa = 133.322365;
 
 class Transport;
@@ -524,9 +523,6 @@ public:
     virtual void eval(size_t j, doublereal* x, doublereal* r,
                       integer* mask, doublereal rdt);
 
-    virtual void evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
-                      integer* diag, doublereal rdt);
-
     virtual void evalRightBoundaryLiquid(doublereal* x, doublereal* rsd,
                       integer* diag, doublereal rdt);
 
@@ -552,10 +548,12 @@ public:
 
     void setLiquidVapPressParam(const doublereal A_,
                                 const doublereal B_,
-                                const doublereal C_) {
+                                const doublereal C_,
+                                const doublereal Tb_) {
         m_prs_A = A_;
         m_prs_B = B_;
         m_prs_C = C_-273.15;
+        m_Tb = Tb_;
     }
 
     void setLiquidCp(const doublereal cpl_) {
@@ -603,7 +601,7 @@ protected:
     }
 
     doublereal nl(const doublereal* x, size_t j) const {
-        return x[index(c_offset_Y+m_nsp+c_offset_nl,j)];
+        return 0.0;
     }
 
     doublereal rhol(const doublereal* x, size_t j) const {
@@ -628,6 +626,9 @@ protected:
     }
 
     doublereal dl(const doublereal* x, size_t j) const {
+        if (ml(x,j)<std::sqrt(std::numeric_limits<double>::min())) {
+            return 0.0;
+        }
         return std::pow(6.0*ml(x,j)/Pi/rhol(x,j),1.0/3.0);
     }
 
@@ -638,7 +639,8 @@ protected:
     doublereal prs(const doublereal* x, size_t j) {
         // Antoine Equation
         // (Elliott, Lira, Introductory Chemical Engineering Thermodynamics, 2012)
-        return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+Tl(x,j))) * mmHg2Pa;
+        // return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+Tl(x,j))) * mmHg2Pa;
+        return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+m_Tb)) * mmHg2Pa;
     }
 
     doublereal Lv() {
@@ -652,10 +654,11 @@ protected:
     }
 
     doublereal cpgf(const doublereal* x,size_t j) {
-        setGas(x,j);
-        doublereal Yr = 2.0/3.0*Yrs(x,j) + 1.0/3.0*Y(x,c_offset_fuel,j);
-        vector_fp cp_R = m_thermo->cp_R_ref();
-        return Yr*GasConstant*cp_R[c_offset_fuel] + (1.0-Yr)*m_cp[j];
+        // setGas(x,j);
+        // doublereal Yr = 2.0/3.0*Yrs(x,j) + 1.0/3.0*Y(x,c_offset_fuel,j);
+        // vector_fp cp_R = m_thermo->cp_R_ref();
+        // return Yr*GasConstant*cp_R[c_offset_fuel] + (1.0-Yr)*m_cp[j];
+        return m_cp[j];
     }
 
     doublereal Yrs(const doublereal* x, size_t j) {
@@ -668,13 +671,15 @@ protected:
 
     doublereal mdot(const doublereal* x, size_t j) {
         doublereal Yrs_ = Yrs(x,j);
-        doublereal Bm = (Yrs_-Y(x,c_offset_fuel,j))/(1.0-Yrs_);
+        doublereal Bm = (Yrs_-Y(x,c_offset_fuel,j)) / 
+            std::max(1.0-Yrs_,std::sqrt(std::numeric_limits<double>::min()));
         doublereal mdot_ = 2.0*Pi*dl(x,j)*m_rho[j]*Dgf(j)*std::log(1.0+Bm);
+        // doublereal mdot_ = 2.0*Pi*m_rho[j]*Dgf(j)*std::log(1.0+Bm);
         return mdot_;
     }
 
     doublereal q(const doublereal* x,size_t j) {
-        if (mdot(x,j)==0) {
+        if (mdot(x,j)<=std::sqrt(std::numeric_limits<double>::min())) {
             return 0.0;
         } else {
             doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_rho[j]*Dgf(j)*dl(x,j)))-1.0;
@@ -716,11 +721,21 @@ protected:
     }
     //! @}
 
+    //! @name artifitial viscosities
+    //! @{
+    doublereal av_ml(const doublereal* x, size_t j) const {
+        doublereal m_visc_ml = ml(x,j)/dl(x,j);
+        doublereal c1 = m_visc_ml*(ml(x,j) - ml(x,j-1));
+        doublereal c2 = m_visc_ml*(ml(x,j+1) - ml(x,j));
+        return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
+    }
+    //! @}
+
     // fuel species index
     size_t c_offset_fuel;
     // vaper pressure parameters (Antoine)
     // http://ddbonline.ddbst.com/AntoineCalculation/AntoineCalculationCGI.exe
-    doublereal m_prs_A, m_prs_B, m_prs_C;
+    doublereal m_prs_A, m_prs_B, m_prs_C, m_Tb;
     // liquid density parameters (DIPPR 105)
     // http://ddbonline.ddbst.de/DIPPR105DensityCalculation/DIPPR105CalculationCGI.exe
     doublereal m_rhol_A, m_rhol_B, m_rhol_C, m_rhol_D;
