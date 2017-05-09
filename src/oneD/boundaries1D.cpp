@@ -751,7 +751,7 @@ SprayInlet1D::SprayInlet1D() :
 void SprayInlet1D::init()
 {
     Inlet1D::init();
-    m_nsp = m_nsp - c_offset_ml - 1;
+    m_nsp = m_nsp - c_offset_nl - 1;
     m_spFlow = (SprayFlame*)m_flow;
 }
 
@@ -776,6 +776,7 @@ void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
     // The first flow residual is for u. This, however, is not modified by
     // the inlet, since this is set within the flow domain from the
     // continuity equation.
+    rb[c_offset_Y+nSpecies()+c_offset_nl] -= m_nl0;
 
     // spreading rate. The flow domain sets this to V(0),
     // so for finite spreading rate subtract m_V0.
@@ -802,6 +803,7 @@ XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "vl", sol[c_offset_vl]);
     addFloat(gv, "Tl", sol[c_offset_Tl]);
     addFloat(gv, "ml", sol[c_offset_ml]);
+    addFloat(gv, "nl", sol[c_offset_nl]);
 
     addFloat(gv, "Dgf", m_spFlow->Dgf(0));
     addFloat(gv, "prs", m_spFlow->prs(soln,0));
@@ -823,7 +825,7 @@ XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
 void SprayOutlet1D::init()
 {
     Inlet1D::init();
-    m_nsp = m_nsp - c_offset_ml - 1;
+    m_nsp = m_nsp - c_offset_nl - 1;
     m_spFlow = (SprayFlame*)m_flow;
 }
 
@@ -851,11 +853,13 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
         rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl + nc];
         rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl + nc];
         rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml + nc];
+        // rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl + nc];
 
         db[c_offset_Ul] = 0;
         db[c_offset_vl] = 0; 
         db[c_offset_Tl] = 0;
         db[c_offset_ml] = 0;
+        // db[c_offset_nl] = 0;
 
     }
 
@@ -869,11 +873,13 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
         rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl - nc];
         rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl - nc];
         rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml - nc];
+        // rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl - nc];
 
         db[c_offset_Ul] = 0;
         db[c_offset_vl] = 0; 
         db[c_offset_Tl] = 0;
         db[c_offset_ml] = 0;
+        // db[c_offset_nl] = 0;
 
     }
 }
@@ -889,6 +895,7 @@ XML_Node& SprayOutlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "vl", sol[c_offset_vl]);
     addFloat(gv, "Tl", sol[c_offset_Tl]);
     addFloat(gv, "ml", sol[c_offset_ml]);
+    addFloat(gv, "nl", sol[c_offset_nl]);
 
     addFloat(gv, "Dgf", m_spFlow->Dgf(lastPoint()));
     addFloat(gv, "prs", m_spFlow->prs(soln,lastPoint()));

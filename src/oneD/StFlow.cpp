@@ -1038,13 +1038,14 @@ void StFlow::set_model(std::string model_name)
 SprayFlame::SprayFlame(IdealGasPhase* ph, size_t nsp, size_t points) :
     AxiStagnFlow(ph, nsp, points)
 {
-    m_nv = c_offset_Y+m_nsp+c_offset_ml+1;
+    m_nv = c_offset_Y+m_nsp+c_offset_nl+1;
     Domain1D::resize(m_nv,points);
 
     setBounds(c_offset_Y+m_nsp+c_offset_Ul, -1e20, 1e20); // no bounds on Ul
-    setBounds(c_offset_Y+m_nsp+c_offset_vl, -1e20, 1e20); // no bounds on Ul
-    setBounds(c_offset_Y+m_nsp+c_offset_Tl, 200.0, 5000.0); // no bounds on Ul
-    setBounds(c_offset_Y+m_nsp+c_offset_ml, -1e-7, 1e20); // no bounds on Ul
+    setBounds(c_offset_Y+m_nsp+c_offset_vl, -1e20, 1e20); // no bounds on vl
+    setBounds(c_offset_Y+m_nsp+c_offset_Tl, 200.0, 5000.0); // bounds on Tl
+    setBounds(c_offset_Y+m_nsp+c_offset_ml, -1e-7, 1e20); // bounds on ml
+    setBounds(c_offset_Y+m_nsp+c_offset_nl, -1e-7, 1e20); // positivity for nl
 
     setID("spray flame");
     // CHANGE HERE 
@@ -1076,7 +1077,6 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
     integer* diag = diagg + loc();
 
     size_t jmin, jmax;
-    double comp_mdot = 1.0;
     if (jg == npos) { // evaluate all points
         jmin = 0;
         jmax = m_points - 1;
@@ -1084,11 +1084,10 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
         size_t jpt = (jg == 0) ? 0 : jg - firstPoint();
         jmin = std::max<size_t>(jpt, 1) - 1;
         jmax = std::min(jpt+1,m_points-1);
-        comp_mdot = 0.0;
     }
 
     // Gaseous phase
-    /* for (size_t j = jmin; j <= jmax; j++) {
+    for (size_t j = jmin; j <= jmax; j++) {
         //----------------------------------------------
         //         left boundary
         //----------------------------------------------
@@ -1099,14 +1098,18 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             // Continuity. This propagates information right-to-left, since
             // rho_u at point 0 is dependent on rho_u at point 1, but not on
             // mdot from the inlet.
-            rsd[index(c_offset_U,0)] += (nl(x,0)*mdot(x,0) + nl(x,1)*mdot(x,1))/2.0;
+            continue;
+            // rsd[index(c_offset_U,0)] += (nl(x,0)*mdot(x,0) + nl(x,1)*mdot(x,1))/2.0;
 
         } else if (j == m_points - 1) {
             continue;
 
         } else { // interior points
 
-            rsd[index(c_offset_U,j)] += (nl(x,j)*mdot(x,j) + nl(x,j+1)*mdot(x,j+1))/2.0;
+            //------------------------------------------------
+            //    Coninuity equation
+            //------------------------------------------------
+            // rsd[index(c_offset_U,j)] += (nl(x,j)*mdot(x,j) + nl(x,j+1)*mdot(x,j+1))/2.0;
 
             //------------------------------------------------
             //    Radial momentum equation
@@ -1115,8 +1118,9 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //       = d(\mu dV/dz)/dz - lambda
             //         + nl mdot (Ul - Ug) - nl Fr
             //-------------------------------------------------
-            rsd[index(c_offset_V,j)] += 
-                (nl(x,j) * mdot(x,j) * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
+            rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
+            // rsd[index(c_offset_V,j)] += 
+            //     (nl(x,j) * mdot(x,j) * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
 
             //-------------------------------------------------
             //    Species equations
@@ -1125,16 +1129,16 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //   = M_k\omega_k
             //     + (\delta_kf - Y_k) nl mdot
             //-------------------------------------------------
-            for (size_t k = 0; k < m_nsp; k++) {
-                doublereal delta_kf;
-                if (k == c_offset_fuel) {
-                    delta_kf = 1.0;
-                } else {
-                    delta_kf = 0.0;
-                }
-                rsd[index(c_offset_Y + k, j)] += 
-                    (delta_kf - Y(x,k,j)) * nl(x,j) * mdot(x,j) / m_rho[j];
-            }
+            // for (size_t k = 0; k < m_nsp; k++) {
+            //     doublereal delta_kf;
+            //     if (k == c_offset_fuel) {
+            //         delta_kf = 1.0;
+            //     } else {
+            //         delta_kf = 0.0;
+            //     }
+            //     rsd[index(c_offset_Y + k, j)] += 
+            //         (delta_kf - Y(x,k,j)) * nl(x,j) * mdot(x,j) / m_rho[j];
+            // }
 
             //-----------------------------------------------
             //    energy equation
@@ -1145,13 +1149,12 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //      - sum_k(J_k c_p_k / M_k) dT/dz
             //      + nl mdot cp (Tl - Tg) - nl mdot q
             //-----------------------------------------------
-            rsd[index(c_offset_T, j)] += 
-                (nl(x,j) * mdot(x,j) * cpgf(x,j) * (Tl(x,j) - T(x,j)) - 
-                 nl(x,j) * mdot(x,j) * q(x,j)) / (m_rho[j]*m_cp[j]);
+            // rsd[index(c_offset_T, j)] += 
+            //     (nl(x,j) * mdot(x,j) * cpgf(x,j) * (Tl(x,j) - T(x,j)) - 
+            //      nl(x,j) * mdot(x,j) * q(x,j)) / (m_rho[j]*m_cp[j]);
 
         }
     }
-    */
 
     // Liquid phase
     for (size_t j = jmin; j <= jmax; j++) {
@@ -1161,6 +1164,15 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
 
         if (j == 0) {
             // these may be modified by a boundary object
+            
+            // Number density. This propagates information right-to-left, since
+            // ml_vl at point 0 is dependent on ml_vl at point 1, but not on
+            // mdot from the inlet.
+            // rsd[index(c_offset_Y+m_nsp+c_offset_nl,0)] = 
+            //     -(nl_vl(x,1) - nl_vl(x,0))/m_dz[0]
+            //     -(nl_Ul(x,1) + nl_Ul(x,0));
+            rsd[index(c_offset_Y+m_nsp+c_offset_nl,0)] = nl(x,0); 
+            diag[index(c_offset_Y+m_nsp+c_offset_nl, 0)] = 0;
 
             // the inlet (or other) object connected to this one will modify
             // these equations by subtracting its values for V, T, and mdot. As
@@ -1179,6 +1191,11 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
         } else if (j == m_points - 1) {
             evalRightBoundaryLiquid(x, rsd, diag, rdt);
         } else { // interior points
+
+            //------------------------------------------------
+            //    Number density equation
+            //------------------------------------------------
+            evalNumberDensity(j, x, rsd, diag, rdt);
 
             //------------------------------------------------
             //    Mass equation
@@ -1234,10 +1251,39 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
 
 }
 
+void SprayFlame::evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
+                                  integer* diag, doublereal rdt)
+{
+     //----------------------------------------------
+     //    Number density equation
+     //
+     //    Note that this propagates the liquid mass flow rate information to the right
+     //    (j+1 -> j) from the value specified at the left boundary.
+     //
+     //    d(n_l v_l)/dz + 2n_l U_l = 0
+     //------------------------------------------------
+     rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] = -vl(x,j) * dnldz(x,j) -
+         nl(x,j) * (vl(x,j) - vl(x,j-1))/m_dz[j-1] -
+         2.0 * nl_Ul(x,j) - rdt * (nl(x,j) - nl_prev(j));
+     // rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] =
+     //     -(nl_vl(x,j) - nl_vl(x,j-1))/m_dz[j-1]
+     //     -(nl_Ul(x,j) + nl_Ul(x,j-1))
+     //     -rdt * (nl(x,j) - nl_prev(j));
+
+     diag[index(c_offset_Y+m_nsp+c_offset_nl, j)] = 1;
+}
+
 void SprayFlame::evalRightBoundaryLiquid(doublereal* x, doublereal* rsd,
                                          integer* diag, doublereal rdt)
 {
     size_t j = m_points - 1;
+
+    rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] = nl(x,j) - nl(x,j-1);
+    // rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] =
+    //      -(nl_vl(x,j) - nl_vl(x,j-1))/m_dz[j-1]
+    //      -(nl_Ul(x,j) + nl_Ul(x,j-1));
+
+    diag[index(c_offset_Y+m_nsp+c_offset_nl, j)] = 0;
 
     // Neumann boundary condition for Ul, vl, Tl and ml
     rsd[index(c_offset_Y+m_nsp+c_offset_Ul,j)] = Ul(x,j) - Ul(x,j-1);
@@ -1264,7 +1310,7 @@ string SprayFlame::componentName(size_t n) const
     default:
         if (n >= c_offset_Y && n < (c_offset_Y + m_nsp)) {
             return m_thermo->speciesName(n - c_offset_Y);
-        } else if (n >= (c_offset_Y + m_nsp) && n <= (c_offset_Y + m_nsp + c_offset_ml)) {
+        } else if (n >= (c_offset_Y + m_nsp) && n <= (c_offset_Y + m_nsp + c_offset_nl)) {
             switch (n - c_offset_Y - m_nsp) {
                 case 0:
                     return "Ul";
@@ -1274,6 +1320,8 @@ string SprayFlame::componentName(size_t n) const
                     return "Tl";
                 case 3:
                     return "ml";
+                case 4:
+                    return "nl";
             }
         } else {
             return "<unknown>";
@@ -1299,6 +1347,8 @@ size_t SprayFlame::componentIndex(const std::string& name) const
         return c_offset_Y + m_nsp + c_offset_Tl;
     } else if (name=="ml") {
         return c_offset_Y + m_nsp + c_offset_ml;
+    } else if (name=="nl") {
+        return c_offset_Y + m_nsp + c_offset_nl;
     } else {
         for (size_t n=c_offset_Y; n<m_nsp+c_offset_Y; n++) {
             if (componentName(n)==name) {
@@ -1328,6 +1378,9 @@ XML_Node& SprayFlame::save(XML_Node& o, const doublereal* const sol)
 
     soln.getRow(componentIndex("ml"), x.data());
     addFloatArray(gv,"ml",x.size(),x.data(),"kg","droplet mass");
+
+    soln.getRow(componentIndex("nl"), x.data());
+    addFloatArray(gv,"nl",x.size(),x.data(),"/m^3","number density");
 
     return flow;
 }

@@ -31,6 +31,7 @@ const size_t c_offset_Ul = 0; // liquid radial velocity
 const size_t c_offset_vl = 1; // liquid axial velocity
 const size_t c_offset_Tl = 2; // liquid temperature
 const size_t c_offset_ml = 3; // droplet mass
+const size_t c_offset_nl = 4; // number density
 const doublereal mmHg2Pa = 133.322365;
 
 class Transport;
@@ -523,6 +524,9 @@ public:
     virtual void eval(size_t j, doublereal* x, doublereal* r,
                       integer* mask, doublereal rdt);
 
+    virtual void evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
+                      integer* diag, doublereal rdt);
+
     virtual void evalRightBoundaryLiquid(doublereal* x, doublereal* rsd,
                       integer* diag, doublereal rdt);
 
@@ -601,7 +605,12 @@ protected:
     }
 
     doublereal nl(const doublereal* x, size_t j) const {
-        return 0.0;
+        return x[index(c_offset_Y+m_nsp+c_offset_nl,j)];
+        // return 0.0;
+    }
+
+    doublereal nl_prev(size_t j) const {
+        return prevSoln(c_offset_Y+m_nsp+c_offset_nl, j);
     }
 
     doublereal rhol(const doublereal* x, size_t j) const {
@@ -713,6 +722,11 @@ protected:
     doublereal dmldz(const doublereal* x, size_t j) const {
         size_t jloc = (vl(x,j) > 0.0 ? j : j + 1);
         return (ml(x,jloc) - ml(x,jloc-1))/m_dz[jloc-1];
+    }
+
+    doublereal dnldz(const doublereal* x, size_t j) const {
+        size_t jloc = (vl(x,j) > 0.0 ? j : j + 1);
+        return (nl(x,jloc) - nl(x,jloc-1))/m_dz[jloc-1];
     }
 
     doublereal dTldz(const doublereal* x, size_t j) const {

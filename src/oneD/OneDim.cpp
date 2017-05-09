@@ -230,7 +230,7 @@ int OneDim::solve(doublereal* x, doublereal* xnew, int loglevel)
         m_jac_ok = true;
     }
 
-    // check the Jacobian
+    /* // check the Jacobian
     std::ofstream debug_file;
     debug_file.open("jac.csv");
     for (size_t i = 0; i < m_jac->nRows(); i++) {
@@ -240,6 +240,7 @@ int OneDim::solve(doublereal* x, doublereal* xnew, int loglevel)
         debug_file << std::endl;
     }
     debug_file.close();
+    */
 
     return m_newt->solve(x, xnew, *this, *m_jac, loglevel);
 }
