@@ -853,13 +853,13 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
         rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl + nc];
         rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl + nc];
         rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml + nc];
-        // rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl + nc];
+        rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl + nc];
 
         db[c_offset_Ul] = 0;
         db[c_offset_vl] = 0; 
         db[c_offset_Tl] = 0;
         db[c_offset_ml] = 0;
-        // db[c_offset_nl] = 0;
+        db[c_offset_nl] = 0;
 
     }
 
@@ -873,13 +873,13 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
         rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl - nc];
         rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl - nc];
         rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml - nc];
-        // rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl - nc];
+        rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl - nc];
 
         db[c_offset_Ul] = 0;
         db[c_offset_vl] = 0; 
         db[c_offset_Tl] = 0;
         db[c_offset_ml] = 0;
-        // db[c_offset_nl] = 0;
+        db[c_offset_nl] = 0;
 
     }
 }
@@ -897,16 +897,16 @@ XML_Node& SprayOutlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "ml", sol[c_offset_ml]);
     addFloat(gv, "nl", sol[c_offset_nl]);
 
-    addFloat(gv, "Dgf", m_spFlow->Dgf(lastPoint()));
-    addFloat(gv, "prs", m_spFlow->prs(soln,lastPoint()));
+    addFloat(gv, "Dgf", m_spFlow->Dgf(lastPoint()-1));
+    addFloat(gv, "prs", m_spFlow->prs(soln,lastPoint()-1));
     addFloat(gv, "Lv", m_spFlow->Lv());
-    addFloat(gv, "cpl", m_spFlow->cpl(soln,lastPoint()));
-    addFloat(gv, "cpgf", m_spFlow->cpgf(soln,lastPoint()));
-    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,lastPoint()));
-    addFloat(gv, "mdot", m_spFlow->mdot(soln,lastPoint()));
-    addFloat(gv, "q", m_spFlow->q(soln,lastPoint()));
-    addFloat(gv, "Fr", m_spFlow->Fr(soln,lastPoint()));
-    addFloat(gv, "fz", m_spFlow->fz(soln,lastPoint()));
+    addFloat(gv, "cpl", m_spFlow->cpl(soln,lastPoint()-1));
+    addFloat(gv, "cpgf", m_spFlow->cpgf(soln,lastPoint()-1));
+    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,lastPoint()-1));
+    addFloat(gv, "mdot", m_spFlow->mdot(soln,lastPoint()-1));
+    addFloat(gv, "q", m_spFlow->q(soln,lastPoint()-1));
+    addFloat(gv, "Fr", m_spFlow->Fr(soln,lastPoint()-1));
+    addFloat(gv, "fz", m_spFlow->fz(soln,lastPoint()-1));
 
     return inlt;
 

@@ -1098,8 +1098,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             // Continuity. This propagates information right-to-left, since
             // rho_u at point 0 is dependent on rho_u at point 1, but not on
             // mdot from the inlet.
-            continue;
-            // rsd[index(c_offset_U,0)] += (nl(x,0)*mdot(x,0) + nl(x,1)*mdot(x,1))/2.0;
+            rsd[index(c_offset_U,0)] += (nl(x,0)*mdot(x,0) + nl(x,1)*mdot(x,1))/2.0;
 
         } else if (j == m_points - 1) {
             continue;
@@ -1109,7 +1108,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //------------------------------------------------
             //    Coninuity equation
             //------------------------------------------------
-            // rsd[index(c_offset_U,j)] += (nl(x,j)*mdot(x,j) + nl(x,j+1)*mdot(x,j+1))/2.0;
+            rsd[index(c_offset_U,j)] += (nl(x,j)*mdot(x,j) + nl(x,j+1)*mdot(x,j+1))/2.0;
 
             //------------------------------------------------
             //    Radial momentum equation
@@ -1118,9 +1117,9 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //       = d(\mu dV/dz)/dz - lambda
             //         + nl mdot (Ul - Ug) - nl Fr
             //-------------------------------------------------
-            rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
-            // rsd[index(c_offset_V,j)] += 
-            //     (nl(x,j) * mdot(x,j) * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
+            // rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
+            rsd[index(c_offset_V,j)] += 
+                (nl(x,j) * mdot(x,j) * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
 
             //-------------------------------------------------
             //    Species equations
@@ -1129,16 +1128,16 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //   = M_k\omega_k
             //     + (\delta_kf - Y_k) nl mdot
             //-------------------------------------------------
-            // for (size_t k = 0; k < m_nsp; k++) {
-            //     doublereal delta_kf;
-            //     if (k == c_offset_fuel) {
-            //         delta_kf = 1.0;
-            //     } else {
-            //         delta_kf = 0.0;
-            //     }
-            //     rsd[index(c_offset_Y + k, j)] += 
-            //         (delta_kf - Y(x,k,j)) * nl(x,j) * mdot(x,j) / m_rho[j];
-            // }
+            for (size_t k = 0; k < m_nsp; k++) {
+                doublereal delta_kf;
+                if (k == c_offset_fuel) {
+                    delta_kf = 1.0;
+                } else {
+                    delta_kf = 0.0;
+                }
+                rsd[index(c_offset_Y + k, j)] += 
+                    (delta_kf - Y(x,k,j)) * nl(x,j) * mdot(x,j) / m_rho[j];
+            }
 
             //-----------------------------------------------
             //    energy equation
@@ -1149,9 +1148,9 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //      - sum_k(J_k c_p_k / M_k) dT/dz
             //      + nl mdot cp (Tl - Tg) - nl mdot q
             //-----------------------------------------------
-            // rsd[index(c_offset_T, j)] += 
-            //     (nl(x,j) * mdot(x,j) * cpgf(x,j) * (Tl(x,j) - T(x,j)) - 
-            //      nl(x,j) * mdot(x,j) * q(x,j)) / (m_rho[j]*m_cp[j]);
+            rsd[index(c_offset_T, j)] += 
+                (nl(x,j) * mdot(x,j) * cpgf(x,j) * (Tl(x,j) - T(x,j)) - 
+                 nl(x,j) * mdot(x,j) * q(x,j)) / (m_rho[j]*m_cp[j]);
 
         }
     }
@@ -1203,7 +1202,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //    dm_l/dt + v_l dm_l/dz = -mdot
             //-------------------------------------------------
             rsd[index(c_offset_Y+m_nsp+c_offset_ml,j)] = -vl(x,j) * dmldz(x,j) - 
-                rdt * (ml(x,j) - ml_prev(j));
+                rdt * (ml(x,j) - ml_prev(j)) - mdot(x,j) + av_ml(x,j);
             diag[index(c_offset_Y+m_nsp+c_offset_ml, j)] = 1;
 
             //------------------------------------------------
@@ -1213,7 +1212,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //       = f_r/r
             //-------------------------------------------------
             rsd[index(c_offset_Y+m_nsp+c_offset_Ul,j)] = -vl(x,j) * dUldz(x,j) -
-                Ul(x,j)*Ul(x,j) - rdt*(Ul(x,j)-Ul_prev(j));
+                Ul(x,j)*Ul(x,j) - rdt*(Ul(x,j)-Ul_prev(j)) + av_Ul(x,j);
             if (ml(x,j)>sqrt(numeric_limits<double>::min())) {
                 rsd[index(c_offset_Y+m_nsp+c_offset_Ul,j)] += Fr(x,j)/ml(x,j);
             }
@@ -1225,7 +1224,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //    m_l dv_l/dt + m_l v_l dv_l/dz = f_z
             //-------------------------------------------------
             rsd[index(c_offset_Y+m_nsp+c_offset_vl,j)] = -vl(x,j)*dvldz(x,j) - 
-                    rdt*(vl(x,j)-vl_prev(j));
+                    rdt*(vl(x,j)-vl_prev(j)) + av_vl(x,j);
             if (ml(x,j)>sqrt(numeric_limits<double>::min())) {
                 rsd[index(c_offset_Y+m_nsp+c_offset_vl,j)] += fz(x,j)/ml(x,j);
             }
@@ -1238,11 +1237,11 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //    = mdot_l (q - L) 
             //-----------------------------------------------
             rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] = -vl(x,j)*dTldz(x,j) - 
-                    rdt * (Tl(x,j) - Tl_prev(j));
-            // if (ml(x,j)>sqrt(numeric_limits<double>::min())) {
-            //     rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] += 
-            //         comp_mdot * mdot(x,j)*(q(x,j)-Lv()) / ml(x,j) / cpl(x,j);
-            // }
+                    rdt * (Tl(x,j) - Tl_prev(j)) + av_Tl(x,j);
+            if (ml(x,j)>sqrt(numeric_limits<double>::min())) {
+                rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] += 
+                    mdot(x,j)*(q(x,j)-Lv()) / ml(x,j) / cpl(x,j);
+            }
             diag[index(c_offset_Y+m_nsp+c_offset_Tl, j)] = 1;
 
         }
@@ -1264,7 +1263,7 @@ void SprayFlame::evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
      //------------------------------------------------
      rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] = -vl(x,j) * dnldz(x,j) -
          nl(x,j) * (vl(x,j) - vl(x,j-1))/m_dz[j-1] -
-         2.0 * nl_Ul(x,j) - rdt * (nl(x,j) - nl_prev(j));
+         2.0 * nl_Ul(x,j) - rdt * (nl(x,j) - nl_prev(j)) + av_nl(x,j);
      // rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] =
      //     -(nl_vl(x,j) - nl_vl(x,j-1))/m_dz[j-1]
      //     -(nl_Ul(x,j) + nl_Ul(x,j-1))
