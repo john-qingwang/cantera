@@ -744,28 +744,28 @@ protected:
     }
 
     doublereal av_nl(const doublereal* x, size_t j) const {
-        doublereal m_visc_nl = 1.0e-4;
+        doublereal m_visc_nl = 1.0e-5;
         doublereal c1 = m_visc_nl*(nl(x,j) - nl(x,j-1));
         doublereal c2 = m_visc_nl*(nl(x,j+1) - nl(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
     }
 
     doublereal av_Tl(const doublereal* x, size_t j) const {
-        doublereal m_visc_Tl = 1.0e-4;
+        doublereal m_visc_Tl = 1.0e-2;
         doublereal c1 = m_visc_Tl*(Tl(x,j) - Tl(x,j-1));
         doublereal c2 = m_visc_Tl*(Tl(x,j+1) - Tl(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
     }
 
     doublereal av_Ul(const doublereal* x, size_t j) const {
-        doublereal m_visc_Ul = 1.0e-4;
+        doublereal m_visc_Ul = 1.0e-5;
         doublereal c1 = m_visc_Ul*(Ul(x,j) - Ul(x,j-1));
         doublereal c2 = m_visc_Ul*(Ul(x,j+1) - Ul(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
     }
 
     doublereal av_vl(const doublereal* x, size_t j) const {
-        doublereal m_visc_vl = 1.0e-4;
+        doublereal m_visc_vl = 1.0e-5;
         doublereal c1 = m_visc_vl*(vl(x,j) - vl(x,j-1));
         doublereal c2 = m_visc_vl*(vl(x,j+1) - vl(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
