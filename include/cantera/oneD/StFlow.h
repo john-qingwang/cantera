@@ -33,6 +33,7 @@ const size_t c_offset_Tl = 2; // liquid temperature
 const size_t c_offset_ml = 3; // droplet mass
 const size_t c_offset_nl = 4; // number density
 const doublereal mmHg2Pa = 133.322365;
+const doublereal bar2Pa  = 1.0e+05;
 
 class Transport;
 class ModelGeneric;
@@ -541,9 +542,10 @@ public:
     }
 
     void setLiquidDensityParam(const doublereal A_,
-                               const doublereal B_,
-                               const doublereal C_,
-                               const doublereal D_) {
+                               const doublereal B_ = 0.0,
+                               const doublereal C_ = 3000.0,
+                               const doublereal D_ = 0.0) {
+        // If only A_ is provided, rhol = A_ and it is const. wrt Tl.
         m_rhol_A = A_;
         m_rhol_B = B_;
         m_rhol_C = C_;
@@ -553,11 +555,21 @@ public:
     void setLiquidVapPressParam(const doublereal A_,
                                 const doublereal B_,
                                 const doublereal C_,
-                                const doublereal Tb_) {
-        m_prs_A = A_;
-        m_prs_B = B_;
-        m_prs_C = C_-273.15;
-        m_Tb = Tb_;
+                                const doublereal Tb_,
+                                const std::string unit_ = "mmHg") {
+        if (unit_.compare("mmHg")==0) {
+            m_prs_A = A_;
+            m_prs_B = B_;
+            m_prs_C = C_-273.15;
+            m_Tb = Tb_;
+            m_cvt = mmHg2Pa;
+        } else if (unit_.compare("bar")==0) {
+            m_prs_A = A_;
+            m_prs_B = B_;
+            m_prs_C = C_;
+            m_Tb = Tb_;
+            m_cvt = bar2Pa;
+        }
     }
 
     void setLiquidCp(const doublereal cpl_) {
@@ -649,7 +661,7 @@ protected:
         // Antoine Equation
         // (Elliott, Lira, Introductory Chemical Engineering Thermodynamics, 2012)
         // return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+Tl(x,j))) * mmHg2Pa;
-        return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+m_Tb)) * mmHg2Pa;
+        return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+m_Tb)) * m_cvt;
     }
 
     doublereal Lv() {
@@ -776,7 +788,7 @@ protected:
     size_t c_offset_fuel;
     // vaper pressure parameters (Antoine)
     // http://ddbonline.ddbst.com/AntoineCalculation/AntoineCalculationCGI.exe
-    doublereal m_prs_A, m_prs_B, m_prs_C, m_Tb;
+    doublereal m_prs_A, m_prs_B, m_prs_C, m_Tb, m_cvt;
     // liquid density parameters (DIPPR 105)
     // http://ddbonline.ddbst.de/DIPPR105DensityCalculation/DIPPR105CalculationCGI.exe
     doublereal m_rhol_A, m_rhol_B, m_rhol_C, m_rhol_D;
