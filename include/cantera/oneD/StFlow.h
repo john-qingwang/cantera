@@ -543,7 +543,7 @@ public:
 
     void setLiquidDensityParam(const doublereal A_,
                                const doublereal B_ = 0.0,
-                               const doublereal C_ = 3000.0,
+                               const doublereal C_ = 0.0,
                                const doublereal D_ = 0.0) {
         // If only A_ is provided, rhol = A_ and it is const. wrt Tl.
         m_rhol_A = A_;
@@ -627,7 +627,13 @@ protected:
 
     doublereal rhol(const doublereal* x, size_t j) const {
         // DIPPR 105
-        return m_rhol_A/(std::pow(m_rhol_B,1.0+std::pow(1.0-Tl(x,j)/m_rhol_C,m_rhol_D)));
+        if (std::abs(m_rhol_B-0.0)<std::sqrt(std::numeric_limits<double>::min()) && 
+            std::abs(m_rhol_C-0.0)<std::sqrt(std::numeric_limits<double>::min()) &&
+            std::abs(m_rhol_D-0.0)<std::sqrt(std::numeric_limits<double>::min()) ) {
+            return m_rhol_A;
+        } else {
+            return m_rhol_A/(std::pow(m_rhol_B,1.0+std::pow(1.0-Tl(x,j)/m_rhol_C,m_rhol_D)));
+        }
     }
 
     doublereal ml_vl(const doublereal* x, size_t j) const {
@@ -749,7 +755,7 @@ protected:
     //! @name artifitial viscosities
     //! @{
     doublereal av_ml(const doublereal* x, size_t j) const {
-        doublereal m_visc_ml = 5.0e+0; // ml(x,j)/dl(x,j);
+        doublereal m_visc_ml = 5.0e-0; // ml(x,j)/dl(x,j);
         doublereal c1 = m_visc_ml*(ml(x,j) - ml(x,j-1));
         doublereal c2 = m_visc_ml*(ml(x,j+1) - ml(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
