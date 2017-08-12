@@ -36,8 +36,6 @@ const doublereal mmHg2Pa = 133.322365;
 const doublereal bar2Pa  = 1.0e+05;
 
 class Transport;
-class ModelGeneric;
-class RDM;
 
 /**
  *  This class represents 1D flow domains that satisfy the one-dimensional
@@ -245,22 +243,6 @@ public:
         return m_kExcessRight;
     }
 
-    //! Toggle for model development
-    void model_toggle(std::string opt) {
-        if (opt.compare("on")==0) {
-            enable_model = true;
-        } else {
-            enable_model = false;
-        }
-    }
-
-    void set_model(std::string model_name);
-
-    ModelGeneric* get_model()
-    {
-        return model;
-    }
-
 protected:
     doublereal wdot(size_t k, size_t j) const {
         return m_wdot(k,j);
@@ -449,10 +431,6 @@ protected:
 
 private:
     vector_fp m_ybar;
-
-    // for model development
-    bool enable_model;
-    ModelGeneric* model;
 
 };
 
