@@ -7,8 +7,9 @@
 
 #ifndef CT_SIM1D_H
 #define CT_SIM1D_H
-
+#include "Inlet1D.h"
 #include "OneDim.h"
+#include <cmath> // for std::abs
 
 namespace Cantera
 {
@@ -184,6 +185,104 @@ public:
         return m_x.data();
     }
 
+    size_t systemSize() const {
+         return m_x.size();
+    }
+
+    void updateBounds() { 
+      Domain1D& dom = domain(1);
+      size_t nv = dom.nComponents();
+      size_t np = dom.nPoints();
+      // The last element is for the continuation parameter
+      // Defaults to strain rate
+      lb.resize(nv*np + 1);
+      ub.resize(nv*np + 1);
+      for (size_t j = 0; j < np; j++) {
+        for (size_t i = 0; i < nv; i++) {
+          lb[j*nv + i] = dom.lowerBound(i);
+          ub[j*nv + i] = dom.upperBound(i);
+        }
+      }
+      lb[nv*np] = 0.0;
+      ub[nv*np] = 1e10;
+    }
+
+    double* lowerBound() {
+      return lb.data();
+    }
+
+    double* upperBound() {
+      return ub.data();
+    }
+
+    double StrainRate() {
+      return m_chi;
+    }
+
+    void setStrainRateValue(double a1) {
+      m_chi = a1;
+    }
+
+    void setFuelVelocity(double uin_f) {
+      m_uin_f = uin_f;
+    }
+
+    void setOxidizerVelocity(double uin_o) { 
+      m_uin_o = uin_o;
+    }
+
+    void setFuelDensity(double rhoin_f) {
+      m_rhoin_f = rhoin_f;
+    }
+ 
+    void setOxidizerDensity(double rhoin_o) {
+      m_rhoin_o = rhoin_o;
+    }
+ 
+    void setStrainRate(int nvar, double* x) {
+        double a1 = x[nvar-1];
+        
+        Domain1D& flow = domain(1);
+        Inlet1D& inlet_f = static_cast<Inlet1D&>(domain(0));
+        Inlet1D& inlet_o = static_cast<Inlet1D&>(domain(2));
+       
+        double ratio = a1/m_chi;
+ 
+        // Amplify velocities
+        size_t u_index = flow.componentIndex("u");
+        size_t V_index = flow.componentIndex("V");
+        size_t nPoints = flow.nPoints();
+        for (size_t i = 0; i < nPoints; i++) {
+          double u_loc = value(1,u_index,i);
+          setValue(1,u_index,i,u_loc*ratio);
+          double V_loc = value(1,V_index,i);
+          setValue(1,V_index,i,V_loc*ratio);
+        }
+
+        m_uin_f *= ratio;
+        m_uin_o *= ratio;
+        
+        // update the boundary condition
+        double mdot_f = m_rhoin_f * m_uin_f;
+        inlet_f.setMdot(mdot_f);
+        double mdot_o = m_rhoin_o * m_uin_o;
+        inlet_o.setMdot(mdot_o);
+
+        m_chi = a1;
+    }
+    
+    // TODO : Update boundary conditions for each a0
+    void unbound_residue(int* nvar,double* fpar,int* ipar,double* x,double* f) {
+      // Copy new solution to flame
+      setSolution(x);
+
+      // Set strain rate
+      setStrainRate(*nvar,x);
+
+      // Evaluate residual using border
+      getResidual(0.0, f);
+    }
+
     doublereal jacobian(int i, int j);
 
     void evalSSJacobian();
@@ -242,6 +341,15 @@ protected:
     //! array of number of steps to take before re-attempting the steady-state
     //! solution
     vector_int m_steps;
+
+    // Strain rate
+    double m_chi;
+
+    // Counterflow boundary conditions
+    double m_uin_f, m_uin_o, m_rhoin_f, m_rhoin_o;
+
+    // Lower and upper bounds - required for continuation
+    std::vector<double> lb, ub;
 
     //! User-supplied function called after a successful steady-state solve.
     Func1* m_steady_callback;

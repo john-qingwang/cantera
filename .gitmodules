@@ -10,3 +10,7 @@
 [submodule "ext/eigen"]
 	path = ext/eigen
 	url = ssh://git@github.com/Cantera/eigen-mirror.git
+[submodule "ext/pitcon"]
+	path = ext/pitcon
+	url = git@github.com:gpavanb/pitcon.git
+        branch = damped_newton
