@@ -243,20 +243,26 @@ public:
         double a1 = x[nvar-1];
         
         Domain1D& flow = domain(1);
-        Inlet1D& inlet_f = static_cast<Inlet1D&>(domain(0));
-        Inlet1D& inlet_o = static_cast<Inlet1D&>(domain(2));
+        SprayInlet1D& inlet_f = static_cast<SprayInlet1D&>(domain(0));
+        SprayOutlet1D& inlet_o = static_cast<SprayOutlet1D&>(domain(2));
        
         double ratio = a1/m_chi;
  
-        // Amplify velocities
+        // Amplify velocities including spray
         size_t u_index = flow.componentIndex("u");
         size_t V_index = flow.componentIndex("V");
+        size_t Ul_index = flow.componentIndex("Ul");
+        size_t vl_index = flow.componentIndex("vl");
         size_t nPoints = flow.nPoints();
         for (size_t i = 0; i < nPoints; i++) {
           double u_loc = value(1,u_index,i);
           setValue(1,u_index,i,u_loc*ratio);
           double V_loc = value(1,V_index,i);
           setValue(1,V_index,i,V_loc*ratio);
+          double Ul_loc = value(1,Ul_index,i);
+          setValue(1,Ul_index,i,Ul_loc*ratio);
+          double vl_loc = value(1,vl_index,i);
+          setValue(1,vl_index,i,vl_loc*ratio);
         }
 
         m_uin_f *= ratio;
@@ -267,6 +273,9 @@ public:
         inlet_f.setMdot(mdot_f);
         double mdot_o = m_rhoin_o * m_uin_o;
         inlet_o.setMdot(mdot_o);
+
+        // update spray boundary condition
+        inlet_f.setDropletInjectionVel(m_uin_f);
 
         m_chi = a1;
     }
