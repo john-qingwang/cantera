@@ -207,6 +207,20 @@ public:
       ub[nv*np] = 1e10;
     }
 
+    void scaleBounds(std::vector<double>& scale) {
+      Domain1D& dom = domain(1);
+      size_t nv = dom.nComponents();
+      size_t np = dom.nPoints();
+      for (size_t j = 0; j < np; j++) {
+        for (size_t i = 0; i < nv; i++) {
+          lb[j*nv + i] = dom.lowerBound(i)/scale[j*nv + i];
+          ub[j*nv + i] = dom.upperBound(i)/scale[j*nv + i];
+        }
+      }
+      lb[nv*np] = 0.0/scale[nv*np];
+      ub[nv*np] = 1e10/scale[nv*np];
+    }
+
     double* lowerBound() {
       return lb.data();
     }
@@ -282,7 +296,11 @@ public:
     
     // TODO : Update boundary conditions for each a0
     void unbound_residue(int* nvar,double* fpar,int* ipar,double* x,double* f) {
-      // Copy new solution to flame
+      // Scale up solution
+      for (int i = 0; i < *nvar; i++)
+        x[i] *= fpar[i];
+
+      // Copy scaled solution to flame
       setSolution(x);
 
       // Set strain rate
@@ -290,6 +308,10 @@ public:
 
       // Evaluate residual using border
       getResidual(0.0, f);
+
+      // Scale down solution
+      for (int i = 0; i < *nvar; i++)
+        x[i] /= fpar[i];
     }
 
     doublereal jacobian(int i, int j);
