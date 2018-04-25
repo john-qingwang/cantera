@@ -554,6 +554,14 @@ public:
         m_cpl = cpl_;
     }
 
+    void setAVCoefficients(const std::vector<doublereal>& m_visc) {
+        m_visc_ml = m_visc[0];
+        m_visc_nl = m_visc[1];
+        m_visc_Tl = m_visc[2];
+        m_visc_Ul = m_visc[3];
+        m_visc_vl = m_visc[4]; 
+    }
+
     void updateFuelSpecies(const std::string fuel_name) {
         c_offset_fuel = componentIndex(fuel_name)-c_offset_Y;
     }
@@ -733,35 +741,30 @@ protected:
     //! @name artifitial viscosities
     //! @{
     doublereal av_ml(const doublereal* x, size_t j) const {
-        doublereal m_visc_ml = 5.0e-0; // ml(x,j)/dl(x,j);
         doublereal c1 = m_visc_ml*(ml(x,j) - ml(x,j-1));
         doublereal c2 = m_visc_ml*(ml(x,j+1) - ml(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
     }
 
     doublereal av_nl(const doublereal* x, size_t j) const {
-        doublereal m_visc_nl = 1.0e-5;
         doublereal c1 = m_visc_nl*(nl(x,j) - nl(x,j-1));
         doublereal c2 = m_visc_nl*(nl(x,j+1) - nl(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
     }
 
     doublereal av_Tl(const doublereal* x, size_t j) const {
-        doublereal m_visc_Tl = 1.0e-2;
         doublereal c1 = m_visc_Tl*(Tl(x,j) - Tl(x,j-1));
         doublereal c2 = m_visc_Tl*(Tl(x,j+1) - Tl(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
     }
 
     doublereal av_Ul(const doublereal* x, size_t j) const {
-        doublereal m_visc_Ul = 1.0e-5;
         doublereal c1 = m_visc_Ul*(Ul(x,j) - Ul(x,j-1));
         doublereal c2 = m_visc_Ul*(Ul(x,j+1) - Ul(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
     }
 
     doublereal av_vl(const doublereal* x, size_t j) const {
-        doublereal m_visc_vl = 1.0e-5;
         doublereal c1 = m_visc_vl*(vl(x,j) - vl(x,j-1));
         doublereal c2 = m_visc_vl*(vl(x,j+1) - vl(x,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
@@ -778,6 +781,8 @@ protected:
     doublereal m_rhol_A, m_rhol_B, m_rhol_C, m_rhol_D;
     // Liquid heat capacity
     doublereal m_cpl;
+    // AV coefficients
+    doublereal m_visc_ml, m_visc_nl, m_visc_Tl, m_visc_Ul, m_visc_vl;
 
 };
 
