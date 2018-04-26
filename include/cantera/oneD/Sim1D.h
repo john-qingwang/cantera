@@ -177,6 +177,10 @@ public:
 
     void getInitialSoln();
 
+    doublereal steady_norm();
+
+    doublereal take_step(int loglevel, int nsteps, doublereal dt);
+
     void setSolution(const doublereal* soln) {
         std::copy(soln, soln + m_x.size(), m_x.data());
     }

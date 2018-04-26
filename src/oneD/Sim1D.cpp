@@ -224,6 +224,19 @@ int Sim1D::newtonSolve(int loglevel)
     }
 }
 
+doublereal Sim1D::take_step(int loglevel, int nsteps, doublereal dt)
+{
+  dt = m_tstep;
+  dt = timeStep(nsteps,dt,m_x.data(),m_xnew.data(),loglevel-1);
+  writelog("Take {} timesteps with size {:10.4g}\n", nsteps,dt);
+  return dt;
+}
+
+doublereal Sim1D::steady_norm()
+{
+  return ssnorm(m_x.data(),m_xnew.data());
+}
+
 void Sim1D::solve(int loglevel, bool refine_grid)
 {
     int new_points = 1;
@@ -240,6 +253,7 @@ void Sim1D::solve(int loglevel, bool refine_grid)
         if (loglevel > 0) {
             writeline('.', 78, true, true);
         }
+
         while (!ok) {
             // Attempt to solve the steady problem
             setSteadyMode();
