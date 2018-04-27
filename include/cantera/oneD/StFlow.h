@@ -26,7 +26,7 @@ const size_t c_offset_T = 2; // temperature
 const size_t c_offset_L = 3; // (1/r)dP/dr
 const size_t c_offset_Y = 4; // mass fractions
 
-// Parameters used in spray flame
+// Parameters used in spray liquid
 const size_t c_offset_Ul = 0; // liquid radial velocity 
 const size_t c_offset_vl = 1; // liquid axial velocity
 const size_t c_offset_Tl = 2; // liquid temperature
@@ -65,7 +65,6 @@ public:
     virtual void setupGrid(size_t n, const doublereal* z);
 
     virtual void resetBadValues(double* xg);
-
 
     thermo_t& phase() {
         return *m_thermo;
@@ -288,6 +287,10 @@ protected:
         return x[index(c_offset_U, j)];
     }
 
+    doublereal u_prev(size_t j) const {
+        return prevSoln(c_offset_U, j);
+    }
+
     doublereal V(const doublereal* x, size_t j) const {
         return x[index(c_offset_V, j)];
     }
@@ -487,18 +490,44 @@ public:
     doublereal m_tfixed;
 };
 
+// Forward declaration to avoid cyclic dependency
+class SprayLiquid;
+
 /**
- * A class for spray flames.
+ * A class for spray flame gas phase.
  * @ingroup onedim
  */
-class SprayFlame : public AxiStagnFlow
+class SprayGas : public AxiStagnFlow
+{
+
+friend class SprayLiquid;
+
+public:
+    virtual void eval(size_t j, doublereal* x, doublereal* r,
+                      integer* mask, doublereal rdt);
+
+protected:
+
+    doublereal Fr(const doublereal* x, size_t j);
+
+    doublereal fz(const doublereal* x, size_t j);
+
+    SprayLiquid* m_liq;
+};
+
+/**
+ * A class for spray flame liquid phase.
+ * @ingroup onedim
+ */
+class SprayLiquid : public Domain1D
 {
 
 friend class SprayInlet1D;
 friend class SprayOutlet1D;
+friend class SprayGas;
 
 public:
-    SprayFlame(IdealGasPhase* ph = 0, size_t nsp = 1, size_t points = 1);
+    SprayLiquid(IdealGasPhase* ph = 0, size_t points = 1);
 
     virtual void eval(size_t j, doublereal* x, doublereal* r,
                       integer* mask, doublereal rdt);
@@ -518,6 +547,12 @@ public:
     virtual std::string flowType() {
         return "Axisymmetric Spray Stagnation";
     }
+ 
+    virtual void setupGrid(size_t n, const doublereal* z);
+
+    virtual void resetBadValues(double* xg);
+
+    virtual void showSolution(const doublereal* x);
 
     void setLiquidDensityParam(const doublereal A_,
                                const doublereal B_ = 0.0,
@@ -571,44 +606,44 @@ protected:
     //! @name Solution components
     //! @{
     doublereal Tl(const doublereal* x, size_t j) const {
-        return x[index(c_offset_Y+m_nsp+c_offset_Tl,j)];
+        return x[index(c_offset_Tl,j)];
     }
 
     doublereal Tl_prev(size_t j) const {
-        return prevSoln(c_offset_Y+m_nsp+c_offset_Tl, j);
+        return prevSoln(c_offset_Tl, j);
     }
 
     doublereal vl(const doublereal* x, size_t j) const {
-        return x[index(c_offset_Y+m_nsp+c_offset_vl,j)];
+        return x[index(c_offset_vl,j)];
     }
 
     doublereal vl_prev(size_t j) const {
-        return prevSoln(c_offset_Y+m_nsp+c_offset_vl, j);
+        return prevSoln(c_offset_vl, j);
     }
 
     doublereal Ul(const doublereal* x, size_t j) const {
-        return x[index(c_offset_Y+m_nsp+c_offset_Ul,j)];
+        return x[index(c_offset_Ul,j)];
     }
 
     doublereal Ul_prev(size_t j) const {
-        return prevSoln(c_offset_Y+m_nsp+c_offset_Ul, j);
+        return prevSoln(c_offset_Ul, j);
     }
 
     doublereal ml(const doublereal* x, size_t j) const {
-        return x[index(c_offset_Y+m_nsp+c_offset_ml,j)];
+        return x[index(c_offset_ml,j)];
     }
 
     doublereal ml_prev(size_t j) const {
-        return prevSoln(c_offset_Y+m_nsp+c_offset_ml, j);
+        return prevSoln(c_offset_ml, j);
     }
 
     doublereal nl(const doublereal* x, size_t j) const {
-        return x[index(c_offset_Y+m_nsp+c_offset_nl,j)];
+        return x[index(c_offset_nl,j)];
         // return 0.0;
     }
 
     doublereal nl_prev(size_t j) const {
-        return prevSoln(c_offset_Y+m_nsp+c_offset_nl, j);
+        return prevSoln(c_offset_nl, j);
     }
 
     doublereal rhol(const doublereal* x, size_t j) const {
@@ -645,8 +680,12 @@ protected:
         return std::pow(6.0*ml(x,j)/Pi/rhol(x,j),1.0/3.0);
     }
 
+    doublereal dl_prev(size_t j) const {
+        return dl(prevSolnPtr(),j);
+    }
+
     doublereal Dgf(size_t j) {
-        return m_diff[c_offset_fuel+j*m_nsp];
+        return m_gas->m_diff[c_offset_fuel+j*m_gas->m_nsp];
     }
 
     doublereal prs(const doublereal* x, size_t j) {
@@ -658,7 +697,7 @@ protected:
 
     doublereal Lv() {
         // Clausius-Clapeyron equation
-        return m_prs_B*GasConstant/m_wt[c_offset_fuel];
+        return m_prs_B*GasConstant/m_gas->m_wt[c_offset_fuel];
     }
 
     doublereal cpl(const doublereal* x, size_t j) {
@@ -671,40 +710,48 @@ protected:
         // doublereal Yr = 2.0/3.0*Yrs(x,j) + 1.0/3.0*Y(x,c_offset_fuel,j);
         // vector_fp cp_R = m_thermo->cp_R_ref();
         // return Yr*GasConstant*cp_R[c_offset_fuel] + (1.0-Yr)*m_cp[j];
-        return m_cp[j];
+        return m_gas->m_cp[j];
     }
 
     doublereal Yrs(const doublereal* x, size_t j) {
-        doublereal Xrs = prs(x,j)/m_press;
-        doublereal Yrs = m_wt[c_offset_fuel]*Xrs / 
-                        (m_wt[c_offset_fuel]*Xrs + 
-                         (1.0 - Xrs)*m_wtm[j]);
+        doublereal Xrs = prs(x,j)/m_gas->m_press;
+        doublereal Yrs = m_gas->m_wt[c_offset_fuel]*Xrs / 
+                        (m_gas->m_wt[c_offset_fuel]*Xrs + 
+                         (1.0 - Xrs)*m_gas->m_wtm[j]);
         return Yrs;
     }
 
     doublereal mdot(const doublereal* x, size_t j) {
         doublereal Yrs_ = Yrs(x,j);
-        doublereal Bm = (Yrs_-Y(x,c_offset_fuel,j)) / 
+        doublereal Bm = (Yrs_- m_gas->Y_prev(c_offset_fuel,j)) / 
             std::max(1.0-Yrs_,std::sqrt(std::numeric_limits<double>::min()));
-        doublereal mdot_ = 2.0*Pi*dl(x,j)*m_rho[j]*Dgf(j)*std::log(1.0+Bm);
+        doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rho[j]*Dgf(j)*std::log(1.0+Bm);
         return mdot_;
+    }
+
+    doublereal mdot(size_t j) {
+       return mdot(prevSolnPtr(), j);
     }
 
     doublereal q(const doublereal* x,size_t j) {
         if (mdot(x,j)<=std::sqrt(std::numeric_limits<double>::min())) {
             return 0.0;
         } else {
-            doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_rho[j]*Dgf(j)*dl(x,j)))-1.0;
-            return cpgf(x,j)*(T(x,j)-Tl(x,j))/BT;
+            doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_gas->m_rho[j]*Dgf(j)*dl(x,j)))-1.0;
+            return cpgf(x,j)*(m_gas->T_prev(j)-Tl(x,j))/BT;
         }
     }
 
+    doublereal q(size_t j) {
+        return q(prevSolnPtr(),j);
+    }
+
     doublereal Fr(const doublereal* x, size_t j) {
-        return 3.0*Pi*dl(x,j)*m_visc[j]*(V(x,j)-Ul(x,j));
+        return 3.0*Pi*dl(x,j)*m_gas->m_visc[j]*(m_gas->V_prev(j)-Ul(x,j));
     }
 
     doublereal fz(const doublereal* x, size_t j) {
-        return 3.0*Pi*dl(x,j)*m_visc[j]*(u(x,j)-vl(x,j));
+        return 3.0*Pi*dl(x,j)*m_gas->m_visc[j]*(m_gas->u_prev(j)-vl(x,j));
     }
 
     //! @}
@@ -781,9 +828,12 @@ protected:
     doublereal m_rhol_A, m_rhol_B, m_rhol_C, m_rhol_D;
     // Liquid heat capacity
     doublereal m_cpl;
+    // grid parameters
+    vector_fp m_dz;
     // AV coefficients
     doublereal m_visc_ml, m_visc_nl, m_visc_Tl, m_visc_Ul, m_visc_vl;
-
+    // Linked gas flamelet class
+    SprayGas* m_gas;
 };
 
 }

@@ -396,6 +396,11 @@ public:
         return m_right;
     }
 
+    // Pointer to previous solution
+    const double* prevSolnPtr() const {
+      return m_slast.data();
+    } 
+
     //! Value of component n at point j in the previous solution.
     double prevSoln(size_t n, size_t j) const {
         return m_slast[m_nv*j + n];

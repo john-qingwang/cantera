@@ -744,21 +744,24 @@ void ReactingSurf1D::showSolution(const double* x)
 
 // -------- SprayInlet1D --------
 //
-SprayInlet1D::SprayInlet1D() :
-    Inlet1D(), m_nl0(0), m_vl0(0), m_Ul0(0), m_Tl0(300.0), m_ml0(0)
+SprayInlet1D::SprayInlet1D() : 
+    Bdry1D(), m_nl0(0), m_vl0(0), m_Ul0(0), m_Tl0(300.0), m_ml0(0)
 {}
 
-void SprayInlet1D::init()
+void SprayInlet1D::init() 
 {
-    Inlet1D::init();
-    m_nsp = m_nsp - c_offset_nl - 1;
-    m_spFlow = (SprayFlame*)m_flow;
+    Bdry1D::init();
 }
 
+void SprayInlet1D::setDomain(SprayLiquid* spFlow)
+{
+    m_spFlow = spFlow;
+}
+
+// TODO : Change comments
 void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
             integer* diagg, doublereal rdt)
 {
-    Inlet1D::eval(jg, xg, rg, diagg, rdt);
     if (jg != npos && (jg + 2 < firstPoint() || jg > lastPoint() + 2)) {
         return;
     }
@@ -766,44 +769,41 @@ void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
     double* rb;
     if (m_ilr == LeftInlet) {
         // Array elements corresponding to the first point of the flow domain
-        rb = rg + m_flow->loc();
+        rb = rg + m_spFlow->loc();
     } else {
         // right inlet
         // Array elements corresponding to the flast point in the flow domain
-        rb = rg + loc() - m_flow->nComponents();
+        rb = rg + loc() - m_spFlow->nComponents();
     }
 
     // The first flow residual is for u. This, however, is not modified by
     // the inlet, since this is set within the flow domain from the
     // continuity equation.
-    rb[c_offset_Y+nSpecies()+c_offset_nl] -= m_nl0;
+    rb[c_offset_nl] -= m_nl0;
 
     // spreading rate. The flow domain sets this to V(0),
     // so for finite spreading rate subtract m_V0.
-    rb[c_offset_Y+nSpecies()+c_offset_Ul] -= m_Ul0;
+    rb[c_offset_Ul] -= m_Ul0;
 
-    rb[c_offset_Y+nSpecies()+c_offset_vl] -= m_vl0;
+    rb[c_offset_vl] -= m_vl0;
 
     // The third flow residual is for T, where it is set to T(0).  Subtract
     // the local temperature to hold the flow T to the inlet T.
-    rb[c_offset_Y+nSpecies()+c_offset_Tl] -= m_Tl0;
+    rb[c_offset_Tl] -= m_Tl0;
 
-    rb[c_offset_Y+nSpecies()+c_offset_ml] -= m_ml0;
-
+    rb[c_offset_ml] -= m_ml0;
 }
 
 XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
 {
-    XML_Node& inlt = Inlet1D::save(o, soln);
+    XML_Node& inlt = Domain1D::save(o, soln);
     XML_Node& gv = inlt.addChild("spray_inlet");
 
-    const double* sol  = soln + m_flow->loc() + c_offset_Y + nSpecies();
-
-    addFloat(gv, "Ul", sol[c_offset_Ul]);
-    addFloat(gv, "vl", sol[c_offset_vl]);
-    addFloat(gv, "Tl", sol[c_offset_Tl]);
-    addFloat(gv, "ml", sol[c_offset_ml]);
-    addFloat(gv, "nl", sol[c_offset_nl]);
+    addFloat(gv, "Ul", soln[c_offset_Ul]);
+    addFloat(gv, "vl", soln[c_offset_vl]);
+    addFloat(gv, "Tl", soln[c_offset_Tl]);
+    addFloat(gv, "ml", soln[c_offset_ml]);
+    addFloat(gv, "nl", soln[c_offset_nl]);
 
     addFloat(gv, "Dgf", m_spFlow->Dgf(0));
     addFloat(gv, "prs", m_spFlow->prs(soln,0));
@@ -817,31 +817,32 @@ XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "fz", m_spFlow->fz(soln,0));
 
     return inlt;
-
 }
 
-// -------- SprayInlet1D --------
+// -------- SprayOutlet1D --------
 //
 void SprayOutlet1D::init()
 {
-    Inlet1D::init();
-    m_nsp = m_nsp - c_offset_nl - 1;
-    m_spFlow = (SprayFlame*)m_flow;
+    Bdry1D::init();
 }
 
+void SprayOutlet1D::setDomain(SprayLiquid* spFlow)
+{
+    m_spFlow = spFlow;
+}
+
+// TODO: Comment why function is this way
 void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* diagg,
                     doublereal rdt)
 {
-    Inlet1D::eval(jg, xg, rg, diagg, rdt);
-
     if (jg != npos && (jg + 2 < firstPoint() || jg > lastPoint() + 2)) {
         return;
     }
 
     // start of local part of global arrays
-    doublereal* x = xg + loc() + c_offset_Y + nSpecies();
-    doublereal* r = rg + loc() + c_offset_Y + nSpecies();
-    integer* diag = diagg + loc() + c_offset_Y + nSpecies();
+    doublereal* x = xg + loc();
+    doublereal* r = rg + loc();
+    integer* diag = diagg + loc();
 
     if (m_flow_right) {
         size_t nc = m_flow_right->nComponents();
@@ -886,16 +887,14 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
 
 XML_Node& SprayOutlet1D::save(XML_Node& o, const doublereal* const soln)
 {
-    XML_Node& inlt = Inlet1D::save(o, soln);
+    XML_Node& inlt = Domain1D::save(o, soln);
     XML_Node& gv = inlt.addChild("spray_outlet");
 
-    const double* sol = soln + m_flow->loc() + c_offset_Y + nSpecies();
-
-    addFloat(gv, "Ul", sol[c_offset_Ul]);
-    addFloat(gv, "vl", sol[c_offset_vl]);
-    addFloat(gv, "Tl", sol[c_offset_Tl]);
-    addFloat(gv, "ml", sol[c_offset_ml]);
-    addFloat(gv, "nl", sol[c_offset_nl]);
+    addFloat(gv, "Ul", soln[c_offset_Ul]);
+    addFloat(gv, "vl", soln[c_offset_vl]);
+    addFloat(gv, "Tl", soln[c_offset_Tl]);
+    addFloat(gv, "ml", soln[c_offset_ml]);
+    addFloat(gv, "nl", soln[c_offset_nl]);
 
     addFloat(gv, "Dgf", m_spFlow->Dgf(lastPoint()-1));
     addFloat(gv, "prs", m_spFlow->prs(soln,lastPoint()-1));

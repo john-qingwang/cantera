@@ -318,11 +318,15 @@ protected:
  * A spray inlet.
  * @ingroup onedim
  */
-class SprayInlet1D : public Inlet1D
+class SprayInlet1D : public Bdry1D
 {
 public:
 
     SprayInlet1D();
+
+    void setDomain(SprayLiquid* spFlow);
+
+    virtual void showSolution(const double* x);
 
     void setNumberDensity(const doublereal nl) {
         m_nl0 = nl;
@@ -350,27 +354,28 @@ public:
                   integer* diagg, doublereal rdt);
 
     virtual XML_Node& save(XML_Node& o, const doublereal* const soln);
-protected:
 
+protected:
     doublereal m_nl0;
     doublereal m_vl0;
     doublereal m_Ul0;
     doublereal m_Tl0;
     doublereal m_ml0;
 
-    SprayFlame* m_spFlow;
-
+    SprayLiquid* m_spFlow;
 };
 
 /**
  * A spray outlet.
  * @ingroup onedim
  */
-class SprayOutlet1D : public Inlet1D
+class SprayOutlet1D : public Bdry1D
 {
 public:
 
-    SprayOutlet1D() : Inlet1D() {}
+    SprayOutlet1D() : Bdry1D() {}
+
+    void setDomain(SprayLiquid* spFlow);
 
     virtual void init();
 
@@ -380,8 +385,7 @@ public:
     virtual XML_Node& save(XML_Node& o, const doublereal* const soln);
 
 protected:
-
-    SprayFlame* m_spFlow;
+    SprayLiquid* m_spFlow;
 
 };
 
