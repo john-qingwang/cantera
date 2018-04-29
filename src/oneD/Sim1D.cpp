@@ -226,10 +226,11 @@ int Sim1D::newtonSolve(int loglevel)
 
 doublereal Sim1D::take_step(int loglevel, int nsteps, doublereal dt)
 {
-  dt = m_tstep;
-  dt = timeStep(nsteps,dt,m_x.data(),m_xnew.data(),loglevel-1);
-  writelog("Take {} timesteps with size {:10.4g}\n", nsteps,dt);
-  return dt;
+  doublereal dt_new;
+  dt_new = timeStep(nsteps,dt,m_x.data(),m_xnew.data(),loglevel-1);
+  m_xlast_ts = m_x;
+  writelog("Take {} timesteps with last size {:10.4g}\n", nsteps,dt_new);
+  return dt_new;
 }
 
 doublereal Sim1D::steady_norm()

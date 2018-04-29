@@ -16,6 +16,7 @@ namespace Cantera
 
 // domain types
 const int cFlowType = 50;
+const int cSprayType = 66;
 const int cConnectorType = 100;
 const int cSurfType = 102;
 const int cInletType = 104;

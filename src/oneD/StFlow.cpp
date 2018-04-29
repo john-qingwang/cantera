@@ -1003,10 +1003,25 @@ XML_Node& FreeFlame::save(XML_Node& o, const doublereal* const sol)
     return flow;
 }
 
-SprayLiquid::SprayLiquid(IdealGasPhase* ph, size_t points)
+/////////////
+// SprayLiquid 
+///////////
+
+void SprayLiquid::_getInitialSoln(double* x)
+{
+    for (size_t j = 0; j < m_points; j++) {
+        Ul(x,j) = 0;
+        vl(x,j) = 0;
+        Tl(x,j) = 300.0;
+        ml(x,j) = 0;
+        nl(x,j) = 0;
+    }
+}
+
+SprayLiquid::SprayLiquid()
 {
     m_nv = c_offset_nl+1;
-    Domain1D::resize(m_nv,points);
+    Domain1D::resize(m_nv,1);
 
     setBounds(c_offset_Ul, -1e20, 1e20); // no bounds on Ul
     setBounds(c_offset_vl, -1e20, 1e20); // no bounds on vl
@@ -1017,9 +1032,10 @@ SprayLiquid::SprayLiquid(IdealGasPhase* ph, size_t points)
     setID("spray liquid");
     // CHANGE HERE 
     // (default is water)
-    updateFuelSpecies("H2O");
+    //updateFuelSpecies("H2O");
     // vapor pressure coefficients
     m_prs_A = 8.07131;
+    m_type = cSprayType;
     m_prs_B = 1730.63;
     m_prs_C = 233.426-273.15;
     // liquid density
@@ -1029,6 +1045,13 @@ SprayLiquid::SprayLiquid(IdealGasPhase* ph, size_t points)
     m_rhol_D = 0.05107;
     // heat capacity [J/kmol/K]
     m_cpl = 76.0e+03;
+}
+
+void SprayLiquid::resize(size_t ncomponents, size_t points)
+{
+    Domain1D::resize(ncomponents, points);
+    m_dz.resize(m_points-1);
+    m_z.resize(m_points);
 }
 
 void SprayLiquid::eval(size_t jg, doublereal* xg,
@@ -1279,17 +1302,28 @@ void SprayLiquid::resetBadValues(double* xg) {
     //}
 }
 
+void SprayLiquid::setGasDomain(SprayGas* gas) {
+    m_gas = gas;
+}
+
 /////////////
 // SprayGas 
 ///////////
 
 // Defined here to avoid forward declaration issue
+SprayGas::SprayGas(IdealGasPhase* ph, size_t nsp, size_t points) :
+    AxiStagnFlow(ph, nsp, points) {} 
+
 doublereal SprayGas::Fr(const doublereal* x, size_t j) {
     return 3.0*Pi*m_liq->dl_prev(j)*m_visc[j]*(V(x,j)-m_liq->Ul_prev(j));
 }
 
 doublereal SprayGas::fz(const doublereal* x, size_t j) {
     return 3.0*Pi*m_liq->dl_prev(j)*m_visc[j]*(u(x,j)-m_liq->vl(x,j));
+}
+
+void SprayGas::updateFuelSpecies(const std::string fuel_name) {
+    c_offset_fuel = componentIndex(fuel_name)-c_offset_Y;
 }
 
 void SprayGas::eval(size_t jg, doublereal* xg,
@@ -1301,7 +1335,6 @@ void SprayGas::eval(size_t jg, doublereal* xg,
     // start of local part of global arrays
     doublereal* x = xg + loc();
     doublereal* rsd = rg + loc();
-    integer* diag = diagg + loc();
 
     size_t jmin, jmax;
     if (jg == npos) { // evaluate all points
@@ -1344,8 +1377,8 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //       = d(\mu dV/dz)/dz - lambda
             //         + nl mdot (Ul - Ug) - nl Fr
             //-------------------------------------------------
-            // rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
-            rsd[index(c_offset_V,j)] += 
+             rsd[index(c_offset_V,j)] -= ( m_liq->nl_prev(j) * Fr(x,j) / m_rho[j] );
+             rsd[index(c_offset_V,j)] += 
                 (m_liq->nl_prev(j) * m_liq->mdot(j) * (m_liq->Ul_prev(j)-V(x,j)) - m_liq->nl_prev(j) * Fr(x,j)) / m_rho[j];
 
             //-------------------------------------------------
@@ -1357,7 +1390,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //-------------------------------------------------
             for (size_t k = 0; k < m_nsp; k++) {
                 doublereal delta_kf;
-                if (k == m_liq->c_offset_fuel) {
+                if (k == c_offset_fuel) {
                     delta_kf = 1.0;
                 } else {
                     delta_kf = 0.0;
@@ -1382,5 +1415,8 @@ void SprayGas::eval(size_t jg, doublereal* xg,
     }
 }
 
+void SprayGas::setLiquidDomain(SprayLiquid* liq) {
+    m_liq = liq;
+}
 
 } // namespace

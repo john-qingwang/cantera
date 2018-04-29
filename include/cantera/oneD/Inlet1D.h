@@ -84,8 +84,10 @@ public:
 
 protected:
     void _init(size_t n);
+    void _spray_init(size_t n);
 
     StFlow* m_flow_left, *m_flow_right;
+    SprayLiquid* m_flow_left_sp, *m_flow_right_sp;
     size_t m_ilr, m_left_nv, m_right_nv;
     size_t m_left_loc, m_right_loc;
     size_t m_left_points;
@@ -324,8 +326,6 @@ public:
 
     SprayInlet1D();
 
-    void setDomain(SprayLiquid* spFlow);
-
     virtual void showSolution(const double* x);
 
     void setNumberDensity(const doublereal nl) {
@@ -336,10 +336,14 @@ public:
         m_ml0 = ml;
     }
 
+    // TODO
+    // Note u and v are interchanged in liquid formulation
     void setDropletInjectionVel(const doublereal vl) {
         m_vl0 = vl;
     }
 
+    // TODO
+    // Note u and v are interchanged in liquid formulation
     void setDropletSpreadVel(const doublereal Ul) {
         m_Ul0 = Ul;
     }
@@ -374,8 +378,6 @@ class SprayOutlet1D : public Bdry1D
 public:
 
     SprayOutlet1D() : Bdry1D() {}
-
-    void setDomain(SprayLiquid* spFlow);
 
     virtual void init();
 
