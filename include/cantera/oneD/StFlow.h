@@ -520,6 +520,10 @@ protected:
 
     doublereal fz(const doublereal* x, size_t j);
 
+    doublereal Dgf(size_t j);
+
+    doublereal cpgf(size_t j); 
+
     size_t c_offset_fuel;
 
     SprayLiquid* m_liq;
@@ -717,11 +721,8 @@ protected:
         return dl(prevSolnPtr(),j);
     }
 
-    doublereal Dgf(size_t j) {
-        return m_gas->m_diff[m_gas->c_offset_fuel+j*m_gas->m_nsp];
-    }
 
-    doublereal prs(const doublereal* x, size_t j) {
+    doublereal prs(size_t j) {
         // Antoine Equation
         // (Elliott, Lira, Introductory Chemical Engineering Thermodynamics, 2012)
         // return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+Tl(x,j))) * mmHg2Pa;
@@ -738,16 +739,16 @@ protected:
         return m_cpl;
     }
 
-    doublereal cpgf(const doublereal* x,size_t j) {
+    //doublereal cpgf(size_t j) {
         // setGas(x,j);
         // doublereal Yr = 2.0/3.0*Yrs(x,j) + 1.0/3.0*Y(x,c_offset_fuel,j);
         // vector_fp cp_R = m_thermo->cp_R_ref();
         // return Yr*GasConstant*cp_R[c_offset_fuel] + (1.0-Yr)*m_cp[j];
-        return m_gas->m_cp[j];
-    }
+      //  return m_gas->m_cp[j];
+    //}
 
-    doublereal Yrs(const doublereal* x, size_t j) {
-        doublereal Xrs = prs(x,j)/m_gas->m_press;
+    doublereal Yrs(size_t j) {
+        doublereal Xrs = prs(j)/m_gas->m_press;
         doublereal Yrs = m_gas->m_wt[m_gas->c_offset_fuel]*Xrs / 
                         (m_gas->m_wt[m_gas->c_offset_fuel]*Xrs + 
                          (1.0 - Xrs)*m_gas->m_wtm[j]);
@@ -755,10 +756,10 @@ protected:
     }
 
     doublereal mdot(const doublereal* x, size_t j) {
-        doublereal Yrs_ = Yrs(x,j);
+        doublereal Yrs_ = Yrs(j);
         doublereal Bm = (Yrs_- m_gas->Y_prev(m_gas->c_offset_fuel,j)) / 
             std::max(1.0-Yrs_,std::sqrt(std::numeric_limits<double>::min()));
-        doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rho[j]*Dgf(j)*std::log(1.0+Bm);
+        doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rho[j]*m_gas->Dgf(j)*std::log(1.0+Bm);
         return mdot_;
     }
 
@@ -770,8 +771,8 @@ protected:
         if (mdot(x,j)<=std::sqrt(std::numeric_limits<double>::min())) {
             return 0.0;
         } else {
-            doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_gas->m_rho[j]*Dgf(j)*dl(x,j)))-1.0;
-            return cpgf(x,j)*(m_gas->T_prev(j)-Tl(x,j))/BT;
+            doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_gas->m_rho[j]*m_gas->Dgf(j)*dl(x,j)))-1.0;
+            return m_gas->cpgf(j)*(m_gas->T_prev(j)-Tl(x,j))/BT;
         }
     }
 

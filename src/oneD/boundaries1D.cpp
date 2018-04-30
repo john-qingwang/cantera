@@ -802,7 +802,7 @@ void SprayInlet1D::init()
         m_ilr = LeftInlet;
         m_spFlow = m_flow_right_sp;
     } else {
-        throw CanteraError("Inlet1D::init","no flow!");
+        throw CanteraError("SprayInlet1D::init","no flow!");
     }
 }
 
@@ -861,12 +861,10 @@ XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "ml", soln[c_offset_ml]);
     addFloat(gv, "nl", soln[c_offset_nl]);
 
-    addFloat(gv, "Dgf", m_spFlow->Dgf(0));
-    addFloat(gv, "prs", m_spFlow->prs(soln,0));
+    addFloat(gv, "prs", m_spFlow->prs(0));
     addFloat(gv, "Lv", m_spFlow->Lv());
     addFloat(gv, "cpl", m_spFlow->cpl(soln,0));
-    addFloat(gv, "cpgf", m_spFlow->cpgf(soln,0));
-    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,0));
+    addFloat(gv, "Yrs", m_spFlow->Yrs(0));
     addFloat(gv, "mdot", m_spFlow->mdot(soln,0));
     addFloat(gv, "q", m_spFlow->q(soln,0));
     addFloat(gv, "Fr", m_spFlow->Fr(soln,0));
@@ -891,7 +889,7 @@ void SprayOutlet1D::init()
         m_ilr = LeftInlet;
         m_spFlow = m_flow_right_sp;
     } else {
-        throw CanteraError("Inlet1D::init","no flow!");
+        throw CanteraError("SprayOutlet1D::init","no flow!");
     }
 }
 
@@ -908,8 +906,8 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
     doublereal* r = rg + loc();
     integer* diag = diagg + loc();
 
-    if (m_ilr == LeftInlet) {
-        size_t nc = m_spFlow->nComponents();
+    if (m_flow_right_sp) {
+        size_t nc = m_flow_right_sp->nComponents();
         double* xb = x;
         double* rb = r;
         int* db = diag;
@@ -928,9 +926,9 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
 
     }
 
-    else {
+    if (m_flow_left_sp) {
         // right inlet
-        size_t nc = m_spFlow->nComponents();
+        size_t nc = m_flow_left_sp->nComponents();
         double* xb = x - nc;
         double* rb = r - nc;
         int* db = diag - nc;
@@ -961,12 +959,10 @@ XML_Node& SprayOutlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "ml", soln[c_offset_ml]);
     addFloat(gv, "nl", soln[c_offset_nl]);
 
-    addFloat(gv, "Dgf", m_spFlow->Dgf(lastPoint()-1));
-    addFloat(gv, "prs", m_spFlow->prs(soln,lastPoint()-1));
+    addFloat(gv, "prs", m_spFlow->prs(lastPoint()-1));
     addFloat(gv, "Lv", m_spFlow->Lv());
     addFloat(gv, "cpl", m_spFlow->cpl(soln,lastPoint()-1));
-    addFloat(gv, "cpgf", m_spFlow->cpgf(soln,lastPoint()-1));
-    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,lastPoint()-1));
+    addFloat(gv, "Yrs", m_spFlow->Yrs(lastPoint()-1));
     addFloat(gv, "mdot", m_spFlow->mdot(soln,lastPoint()-1));
     addFloat(gv, "q", m_spFlow->q(soln,lastPoint()-1));
     addFloat(gv, "Fr", m_spFlow->Fr(soln,lastPoint()-1));

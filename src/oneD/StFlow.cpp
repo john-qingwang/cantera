@@ -1322,6 +1322,14 @@ doublereal SprayGas::fz(const doublereal* x, size_t j) {
     return 3.0*Pi*m_liq->dl_prev(j)*m_visc[j]*(u(x,j)-m_liq->vl(x,j));
 }
 
+doublereal SprayGas::Dgf(size_t j) {
+    return m_diff[c_offset_fuel+j*m_nsp];
+}
+
+doublereal SprayGas::cpgf(size_t j) {
+    return m_cp[j];
+}
+
 void SprayGas::updateFuelSpecies(const std::string fuel_name) {
     c_offset_fuel = componentIndex(fuel_name)-c_offset_Y;
 }
