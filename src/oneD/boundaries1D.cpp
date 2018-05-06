@@ -827,7 +827,8 @@ void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
     // The first flow residual is for u. This, however, is not modified by
     // the inlet, since this is set within the flow domain from the
     // continuity equation.
-    rb[c_offset_nl] -= m_nl0;
+    // Rescaled nl equation
+    rb[c_offset_nl] -= 1.0;
 
     // spreading rate. The flow domain sets this to V(0),
     // so for finite spreading rate subtract m_V0.
@@ -839,7 +840,8 @@ void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
     // the local temperature to hold the flow T to the inlet T.
     rb[c_offset_Tl] -= m_Tl0;
 
-    rb[c_offset_ml] -= m_ml0;
+    // Rescaled ml equation
+    rb[c_offset_ml] -= 1.0;
 }
 
 void SprayInlet1D::showSolution(const double* x)

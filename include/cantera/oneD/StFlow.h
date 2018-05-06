@@ -34,6 +34,7 @@ const size_t c_offset_ml = 3; // droplet mass
 const size_t c_offset_nl = 4; // number density
 const doublereal mmHg2Pa = 133.322365;
 const doublereal bar2Pa  = 1.0e+05;
+const doublereal cutoff = 1.0e-16;
 
 class Transport;
 
@@ -661,6 +662,10 @@ protected:
         return x[index(c_offset_ml,j)];
     }
 
+    doublereal ml_act(const doublereal* x, size_t j) const {
+        return m_ml0*x[index(c_offset_ml,j)];
+    }
+
     doublereal& ml(doublereal* x, size_t j) const {
         return x[index(c_offset_ml,j)];
     }
@@ -711,10 +716,10 @@ protected:
     }
 
     doublereal dl(const doublereal* x, size_t j) const {
-        if (ml(x,j)<std::sqrt(std::numeric_limits<double>::min())) {
+        if (ml_act(x,j)< cutoff) {
             return 0.0;
         }
-        return std::pow(6.0*ml(x,j)/Pi/rhol(x,j),1.0/3.0);
+        return std::pow(6.0*ml_act(x,j)/Pi/rhol(x,j),1.0/3.0);
     }
 
     doublereal dl_prev(size_t j) const {
@@ -768,7 +773,7 @@ protected:
     }
 
     doublereal q(const doublereal* x,size_t j) {
-        if (mdot(x,j)<=std::sqrt(std::numeric_limits<double>::min())) {
+        if (mdot(x,j)<= cutoff) {
             return 0.0;
         } else {
             doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_gas->m_rho[j]*m_gas->Dgf(j)*dl(x,j)))-1.0;
@@ -860,6 +865,10 @@ protected:
     doublereal m_rhol_A, m_rhol_B, m_rhol_C, m_rhol_D;
     // Liquid heat capacity
     doublereal m_cpl;
+    // Store initial mass for scaling
+    doublereal m_ml0;
+    // Store initial number density for scaling
+    doublereal m_nl0;
     // grid parameters
     vector_fp m_dz;
     // AV coefficients

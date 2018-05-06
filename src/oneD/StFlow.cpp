@@ -1026,7 +1026,7 @@ SprayLiquid::SprayLiquid()
     setBounds(c_offset_Ul, -1e20, 1e20); // no bounds on Ul
     setBounds(c_offset_vl, -1e20, 1e20); // no bounds on vl
     setBounds(c_offset_Tl, 200.0, 5000.0); // bounds on Tl
-    setBounds(c_offset_ml, -1e-7, 1e20); // bounds on ml
+    setBounds(c_offset_ml, -1e-7, 1.1); // bounds on ml
     setBounds(c_offset_nl, -1e-7, 1e20); // positivity for nl
 
     setID("spray liquid");
@@ -1119,7 +1119,7 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //    dm_l/dt + v_l dm_l/dz = -mdot
             //-------------------------------------------------
             rsd[index(c_offset_ml,j)] = -vl(x,j) * dmldz(x,j) - 
-                rdt * (ml(x,j) - ml_prev(j)) - mdot(x,j) + av_ml(x,j);
+                rdt * (ml(x,j) - ml_prev(j)) - mdot(x,j)/m_ml0 + av_ml(x,j);
             diag[index(c_offset_ml, j)] = 1;
 
             //------------------------------------------------
@@ -1130,8 +1130,8 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //-------------------------------------------------
             rsd[index(c_offset_Ul,j)] = -vl(x,j) * dUldz(x,j) -
                 Ul(x,j)*Ul(x,j) - rdt*(Ul(x,j)-Ul_prev(j)) + av_Ul(x,j);
-            if (ml(x,j)>sqrt(numeric_limits<double>::min())) {
-                rsd[index(c_offset_Ul,j)] += Fr(x,j)/ml(x,j);
+            if (ml_act(x,j)> cutoff) {
+                rsd[index(c_offset_Ul,j)] += Fr(x,j)/ml_act(x,j);
             }
             diag[index(c_offset_Ul, j)] = 1;
 
@@ -1142,8 +1142,8 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //-------------------------------------------------
             rsd[index(c_offset_vl,j)] = -vl(x,j)*dvldz(x,j) - 
                     rdt*(vl(x,j)-vl_prev(j)) + av_vl(x,j);
-            if (ml(x,j)>sqrt(numeric_limits<double>::min())) {
-                rsd[index(c_offset_vl,j)] += fz(x,j)/ml(x,j);
+            if (ml_act(x,j)>cutoff) {
+                rsd[index(c_offset_vl,j)] += fz(x,j)/ml_act(x,j);
             }
             diag[index(c_offset_vl, j)] = 1;
 
@@ -1155,9 +1155,9 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //-----------------------------------------------
             rsd[index(c_offset_Tl,j)] = -vl(x,j)*dTldz(x,j) - 
                     rdt * (Tl(x,j) - Tl_prev(j)) + av_Tl(x,j);
-            if (ml(x,j)>sqrt(numeric_limits<double>::min())) {
+            if (ml_act(x,j)>cutoff) {
                 rsd[index(c_offset_Tl,j)] += 
-                    mdot(x,j)*(q(x,j)-Lv()) / ml(x,j) / cpl(x,j);
+                    mdot(x,j)*(q(x,j)-Lv()) / ml_act(x,j) / cpl(x,j);
             }
             diag[index(c_offset_Tl, j)] = 1;
         }
@@ -1366,7 +1366,9 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             // Continuity. This propagates information right-to-left, since
             // rho_u at point 0 is dependent on rho_u at point 1, but not on
             // mdot from the inlet.
-            rsd[index(c_offset_U,0)] += (m_liq->nl_prev(0)*m_liq->mdot(0) + m_liq->nl_prev(1)*m_liq->mdot(1))/2.0;
+            if (m_liq->ml_prev(j)>cutoff) {
+            rsd[index(c_offset_U,0)] += m_liq->m_nl0*(m_liq->nl_prev(0)*m_liq->mdot(0) + m_liq->nl_prev(1)*m_liq->mdot(1))/2.0;
+            }
 
         } else if (j == m_points - 1) {
             continue;
@@ -1376,7 +1378,10 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //------------------------------------------------
             //    Coninuity equation
             //------------------------------------------------
-            rsd[index(c_offset_U,j)] += (m_liq->nl_prev(j)*m_liq->mdot(j) + m_liq->nl_prev(j+1)*m_liq->mdot(j+1))/2.0;
+            if (m_liq->ml_prev(j)>cutoff) {
+            rsd[index(c_offset_U,j)] += m_liq->m_nl0*
+                                     (m_liq->nl_prev(j)*m_liq->mdot(j) + m_liq->nl_prev(j+1)*m_liq->mdot(j+1))/2.0;
+            }
 
             //------------------------------------------------
             //    Radial momentum equation
@@ -1385,10 +1390,11 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //       = d(\mu dV/dz)/dz - lambda
             //         + nl mdot (Ul - Ug) - nl Fr
             //-------------------------------------------------
-             rsd[index(c_offset_V,j)] -= ( m_liq->nl_prev(j) * Fr(x,j) / m_rho[j] );
-             rsd[index(c_offset_V,j)] += 
+            if (m_liq->ml_prev(j)>cutoff) {
+             rsd[index(c_offset_V,j)] -= m_liq->m_nl0*( m_liq->nl_prev(j) * Fr(x,j) / m_rho[j] );
+             rsd[index(c_offset_V,j)] += m_liq->m_nl0* 
                 (m_liq->nl_prev(j) * m_liq->mdot(j) * (m_liq->Ul_prev(j)-V(x,j)) - m_liq->nl_prev(j) * Fr(x,j)) / m_rho[j];
-
+            }
             //-------------------------------------------------
             //    Species equations
             //
@@ -1403,10 +1409,11 @@ void SprayGas::eval(size_t jg, doublereal* xg,
                 } else {
                     delta_kf = 0.0;
                 }
+            if (m_liq->ml_prev(j)>cutoff) {
                 rsd[index(c_offset_Y + k, j)] += 
-                    (delta_kf - Y(x,k,j)) * m_liq->nl_prev(j) * m_liq->mdot(j) / m_rho[j];
+                    m_liq->m_nl0*(delta_kf - Y(x,k,j)) * m_liq->nl_prev(j) * m_liq->mdot(j) / m_rho[j];
             }
-
+            } 
             //-----------------------------------------------
             //    energy equation
             //
@@ -1416,9 +1423,11 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //      - sum_k(J_k c_p_k / M_k) dT/dz
             //      + nl mdot cp (Tl - Tg) - nl mdot q
             //-----------------------------------------------
-            rsd[index(c_offset_T, j)] += 
+            if (m_liq->ml_prev(j)>cutoff) {
+            rsd[index(c_offset_T, j)] += m_liq->m_nl0*( 
                 (m_liq->nl_prev(j) * m_liq->mdot(j) * m_cp[j] * (m_liq->Tl_prev(j) - T(x,j)) - 
-                 m_liq->nl_prev(j) * m_liq->mdot(j) * m_liq->q(j)) / (m_rho[j]*m_cp[j]);
+                 m_liq->nl_prev(j) * m_liq->mdot(j) * m_liq->q(j))) / (m_rho[j]*m_cp[j]);
+            }
         }
     }
 }

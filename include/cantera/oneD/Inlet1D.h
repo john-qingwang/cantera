@@ -330,10 +330,12 @@ public:
 
     void setNumberDensity(const doublereal nl) {
         m_nl0 = nl;
+        m_spFlow->m_nl0 = nl;
     }
 
     void setDropletMass(const doublereal ml) {
         m_ml0 = ml;
+        m_spFlow->m_ml0 = ml;
     }
 
     // TODO
