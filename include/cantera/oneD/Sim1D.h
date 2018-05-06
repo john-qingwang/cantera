@@ -179,6 +179,8 @@ public:
 
     doublereal steady_norm();
 
+    doublereal diff_norm();
+
     doublereal take_step(int loglevel, int nsteps, doublereal dt);
 
     void setSolution(const doublereal* soln) {

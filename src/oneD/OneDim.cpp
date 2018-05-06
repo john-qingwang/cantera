@@ -380,6 +380,11 @@ doublereal OneDim::timeStep(int nsteps, doublereal dt, doublereal* x,
 
         // solve the transient problem
         int m = solve(x, r, loglevel-1);
+        vector_fp diff(m_size);
+        // compute step
+        for (size_t l = 0; l < m_size; l++)
+          diff[l] = r[l]-x[l];
+        m_change = m_newt->norm2(x,diff.data(),*this);
 
         // successful time step. Copy the new solution in r to
         // the current solution in x.

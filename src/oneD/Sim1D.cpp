@@ -233,9 +233,9 @@ doublereal Sim1D::take_step(int loglevel, int nsteps, doublereal dt)
   return dt_new;
 }
 
-doublereal Sim1D::steady_norm()
+doublereal Sim1D::diff_norm()
 {
-  return ssnorm(m_x.data(),m_xnew.data());
+  return m_change;
 }
 
 void Sim1D::solve(int loglevel, bool refine_grid)
