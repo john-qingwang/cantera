@@ -353,6 +353,112 @@ void Sim1D::solve(int loglevel, bool refine_grid)
     }
 }
 
+int Sim1D::refine_and_sync(int loglevel, Sim1D& other)
+{
+    int ianalyze, np = 0;
+    vector_fp znew, xnew;
+    vector_fp xnew_other;
+    std::vector<size_t> dsize;
+
+    m_xlast_ss = m_x;
+    m_grid_last_ss.clear();
+
+    for (size_t n = 0; n < nDomains(); n++) {
+        Domain1D& d = domain(n);
+        Domain1D& d_other = other.domain(n);
+        Refiner& r = d.refiner();
+
+        // Save the old grid corresponding to the converged solution
+        m_grid_last_ss.push_back(d.grid());
+
+        // determine where new points are needed
+        ianalyze = r.analyze(d.grid().size(), d.grid().data(), &m_x[start(n)]);
+        if (ianalyze < 0) {
+            return ianalyze;
+        }
+
+        if (loglevel > 0) {
+            r.show();
+        }
+
+        size_t comp = d.nComponents();
+        size_t comp_other = d_other.nComponents();
+
+        // loop over points in the current grid
+        size_t npnow = d.nPoints();
+        size_t nstart = znew.size();
+        for (size_t m = 0; m < npnow; m++) {
+            if (r.keepPoint(m)) {
+                // add the current grid point to the new grid
+                znew.push_back(d.grid(m));
+
+                // do the same for the solution at this point
+                for (size_t i = 0; i < comp; i++) {
+                    xnew.push_back(value(n, i, m));
+                }
+
+                // do the same for the other domain's solution at this point
+                for (size_t i = 0; i < comp_other; i++) {
+                    xnew_other.push_back(other.value(n, i, m));
+                }
+
+                // now check whether a new point is needed in the interval to
+                // the right of point m, and if so, add entries to znew and xnew
+                // for this new point
+                if (r.newPointNeeded(m) && m + 1 < npnow) {
+                    // add new point at midpoint
+                    double zmid = 0.5*(d.grid(m) + d.grid(m+1));
+                    znew.push_back(zmid);
+                    np++;
+
+                    // for each component, linearly interpolate
+                    // the solution to this point
+                    for (size_t i = 0; i < comp; i++) {
+                        double xmid = 0.5*(value(n, i, m) + value(n, i, m+1));
+                        xnew.push_back(xmid);
+                    }
+
+                    // repeat the same for the other domain
+                    for (size_t i = 0; i < comp_other; i++) {
+                        double xmid = 0.5*(other.value(n, i, m) + other.value(n, i, m+1));
+                        xnew_other.push_back(xmid);
+                    }
+
+                }
+            } else {
+                if (loglevel > 0) {
+                    writelog("refine: discarding point at {}\n", d.grid(m));
+                }
+            }
+        }
+        dsize.push_back(znew.size() - nstart);
+    }
+
+    // At this point, the new grid znew and the new solution vector xnew have
+    // been constructed, but the domains themselves have not yet been modified.
+    // Now update each domain with the new grid.
+
+    size_t gridstart = 0, gridsize;
+    for (size_t n = 0; n < nDomains(); n++) {
+        Domain1D& d = domain(n);
+        Domain1D& d_other = other.domain(n);
+        gridsize = dsize[n];
+        d.setupGrid(gridsize, &znew[gridstart]);
+        d_other.setupGrid(gridsize, &znew[gridstart]);
+        gridstart += gridsize;
+    }
+
+    // Replace the current solution vector with the new one
+    m_x = xnew;
+    other.solutionVector() = xnew_other;
+    resize();
+    finalize();
+    other.resize();
+    other.finalize();
+    return np;
+}
+
+
 int Sim1D::refine(int loglevel)
 {
     int ianalyze, np = 0;

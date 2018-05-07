@@ -129,6 +129,9 @@ public:
     /// Refine the grid in all domains.
     int refine(int loglevel=0);
 
+    // Refine the grid and sync with another instance
+    int refine_and_sync(int loglevel, Sim1D& other);
+
     //! Add node for fixed temperature point of freely propagating flame
     int setFixedTemperature(doublereal t);
 
@@ -189,6 +192,10 @@ public:
 
     const doublereal* solution() const {
         return m_x.data();
+    }
+
+    vector_fp& solutionVector() {
+      return m_x;
     }
 
     size_t systemSize() const {
