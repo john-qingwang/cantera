@@ -1432,8 +1432,43 @@ void SprayGas::eval(size_t jg, doublereal* xg,
     }
 }
 
+std::vector<bool> SprayGas::get_equilibrium_status() {
+  std::vector<bool> eq_stat(m_points);
+  std::cout << "Current status: ";
+  for (size_t i = 0; i < m_points; i++) {
+    // Set to 1 if super-saturated, 0 if sub-saturated
+    eq_stat[i] = (Y_prev(c_offset_fuel,i) > m_liq->prs(T_prev(i))/m_press ? 1 : 0);
+    std::cout << eq_stat[i] << " ";
+  }
+  std::cout << std::endl;
+  return eq_stat;
+}
+
+bool SprayGas::check_for_liquid_step() {
+  std::vector<bool> curr_stat = get_equilibrium_status();
+
+  // Compare with previous status
+  for (size_t i = 0; i < m_points; i++) {
+    if (curr_stat[i] != m_eq_stat[i]) {
+      // Store new as current
+      m_eq_stat = curr_stat; 
+      return true;
+    }
+  }
+
+  // Store new status as current
+  m_eq_stat = curr_stat;
+  return false;
+}
+
 void SprayGas::setLiquidDomain(SprayLiquid* liq) {
     m_liq = liq;
+}
+
+void SprayGas::resize(size_t ncomponents, size_t points)
+{
+    StFlow::resize(ncomponents, points);
+    m_eq_stat.resize(m_points);
 }
 
 } // namespace

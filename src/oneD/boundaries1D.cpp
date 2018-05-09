@@ -866,7 +866,7 @@ XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "prs", m_spFlow->prs(0));
     addFloat(gv, "Lv", m_spFlow->Lv());
     addFloat(gv, "cpl", m_spFlow->cpl(soln,0));
-    addFloat(gv, "Yrs", m_spFlow->Yrs(0));
+    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,0));
     addFloat(gv, "mdot", m_spFlow->mdot(soln,0));
     addFloat(gv, "q", m_spFlow->q(soln,0));
     addFloat(gv, "Fr", m_spFlow->Fr(soln,0));
@@ -964,7 +964,7 @@ XML_Node& SprayOutlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "prs", m_spFlow->prs(lastPoint()-1));
     addFloat(gv, "Lv", m_spFlow->Lv());
     addFloat(gv, "cpl", m_spFlow->cpl(soln,lastPoint()-1));
-    addFloat(gv, "Yrs", m_spFlow->Yrs(lastPoint()-1));
+    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,lastPoint()-1));
     addFloat(gv, "mdot", m_spFlow->mdot(soln,lastPoint()-1));
     addFloat(gv, "q", m_spFlow->q(soln,lastPoint()-1));
     addFloat(gv, "Fr", m_spFlow->Fr(soln,lastPoint()-1));

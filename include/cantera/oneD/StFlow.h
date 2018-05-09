@@ -511,11 +511,15 @@ public:
     virtual void eval(size_t j, doublereal* x, doublereal* r,
                       integer* mask, doublereal rdt);
 
+    void resize(size_t ncomponents, size_t points);
+
     void setLiquidDomain(SprayLiquid* gas);
 
     void updateFuelSpecies(const std::string fuel_name);
 
+    bool check_for_liquid_step();
 protected:
+    std::vector<bool> get_equilibrium_status();
 
     doublereal Fr(const doublereal* x, size_t j);
 
@@ -528,6 +532,9 @@ protected:
     size_t c_offset_fuel;
 
     SprayLiquid* m_liq;
+
+    // Store equilibrium status
+    std::vector<bool> m_eq_stat;
 };
 
 /**
@@ -726,12 +733,14 @@ protected:
         return dl(prevSolnPtr(),j);
     }
 
+    doublereal prs(doublereal T) {
+      // Antoine Equation
+      // (Elliott, Lira, Introductory Chemical Engineering Thermodynamics, 2012)
+      return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+T)) * mmHg2Pa;
+    }
 
-    doublereal prs(size_t j) {
-        // Antoine Equation
-        // (Elliott, Lira, Introductory Chemical Engineering Thermodynamics, 2012)
-        // return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+Tl(x,j))) * mmHg2Pa;
-        return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+m_Tb)) * m_cvt;
+    doublereal prs(const doublereal* x, size_t j) {
+      return prs((1/3)*m_gas->T_prev(j) + (2/3)*Tl(x,j));
     }
 
     doublereal Lv() {
@@ -752,8 +761,8 @@ protected:
       //  return m_gas->m_cp[j];
     //}
 
-    doublereal Yrs(size_t j) {
-        doublereal Xrs = prs(j)/m_gas->m_press;
+    doublereal Yrs(const doublereal* x, size_t j) {
+        doublereal Xrs = prs(x,j)/m_gas->m_press;
         doublereal Yrs = m_gas->m_wt[m_gas->c_offset_fuel]*Xrs / 
                         (m_gas->m_wt[m_gas->c_offset_fuel]*Xrs + 
                          (1.0 - Xrs)*m_gas->m_wtm[j]);
@@ -761,7 +770,7 @@ protected:
     }
 
     doublereal mdot(const doublereal* x, size_t j) {
-        doublereal Yrs_ = Yrs(j);
+        doublereal Yrs_ = Yrs(x,j);
         doublereal Bm = (Yrs_- m_gas->Y_prev(m_gas->c_offset_fuel,j)) / 
             std::max(1.0-Yrs_,std::sqrt(std::numeric_limits<double>::min()));
         doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rho[j]*m_gas->Dgf(j)*std::log(1.0+Bm);
