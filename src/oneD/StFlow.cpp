@@ -1118,8 +1118,10 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //
             //    dm_l/dt + v_l dm_l/dz = -mdot
             //-------------------------------------------------
+            if (ml_act(x,j) > cutoff) {
             rsd[index(c_offset_ml,j)] = -vl(x,j) * dmldz(x,j) - 
                 rdt * (ml(x,j) - ml_prev(j)) - mdot(x,j)/m_ml0 + av_ml(x,j);
+            }
             diag[index(c_offset_ml, j)] = 1;
 
             //------------------------------------------------
@@ -1128,10 +1130,10 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //    m_l dU_l/dt + m_l v_l dU_l/dz + m_l U_l^2
             //       = f_r/r
             //-------------------------------------------------
+            if (ml_act(x,j)> cutoff) {
             rsd[index(c_offset_Ul,j)] = -vl(x,j) * dUldz(x,j) -
                 Ul(x,j)*Ul(x,j) - rdt*(Ul(x,j)-Ul_prev(j)) + av_Ul(x,j);
-            if (ml_act(x,j)> cutoff) {
-                rsd[index(c_offset_Ul,j)] += Fr(x,j)/ml_act(x,j);
+            rsd[index(c_offset_Ul,j)] += Fr(x,j)/ml_act(x,j);
             }
             diag[index(c_offset_Ul, j)] = 1;
 
@@ -1140,10 +1142,10 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //
             //    m_l dv_l/dt + m_l v_l dv_l/dz = f_z
             //-------------------------------------------------
+            if (ml_act(x,j)>cutoff) {
             rsd[index(c_offset_vl,j)] = -vl(x,j)*dvldz(x,j) - 
                     rdt*(vl(x,j)-vl_prev(j)) + av_vl(x,j);
-            if (ml_act(x,j)>cutoff) {
-                rsd[index(c_offset_vl,j)] += fz(x,j)/ml_act(x,j);
+            rsd[index(c_offset_vl,j)] += fz(x,j)/ml_act(x,j);
             }
             diag[index(c_offset_vl, j)] = 1;
 
@@ -1153,11 +1155,10 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //    m_l c_p_l dT_l/dt + m_l c_p_l v_l dT_l/dz
             //    = mdot_l (q - L) 
             //-----------------------------------------------
+            if (ml_act(x,j)>cutoff) {
             rsd[index(c_offset_Tl,j)] = -vl(x,j)*dTldz(x,j) - 
                     rdt * (Tl(x,j) - Tl_prev(j)) + av_Tl(x,j);
-            if (ml_act(x,j)>cutoff) {
-                rsd[index(c_offset_Tl,j)] += 
-                    mdot(x,j)*(q(x,j)-Lv()) / ml_act(x,j) / cpl(x,j);
+            rsd[index(c_offset_Tl,j)] += mdot(x,j)*(q(x,j)-Lv()) / ml_act(x,j) / cpl(x,j);
             }
             diag[index(c_offset_Tl, j)] = 1;
         }
@@ -1175,9 +1176,11 @@ void SprayLiquid::evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
      //
      //    d(n_l v_l)/dz + 2n_l U_l = 0
      //------------------------------------------------
+     if (ml_act(x,j)>cutoff) {
      rsd[index(c_offset_nl,j)] = -vl(x,j) * dnldz(x,j) -
          nl(x,j) * (vl(x,j) - vl(x,j-1))/m_dz[j-1] -
          2.0 * nl_Ul(x,j) - rdt * (nl(x,j) - nl_prev(j)) + av_nl(x,j);
+     }
      // rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] =
      //     -(nl_vl(x,j) - nl_vl(x,j-1))/m_dz[j-1]
      //     -(nl_Ul(x,j) + nl_Ul(x,j-1))
@@ -1293,13 +1296,15 @@ void SprayLiquid::setupGrid(size_t n, const doublereal* z)
 }
 
 void SprayLiquid::resetBadValues(double* xg) {
-    // Nothing to do for SprayLiquid class
-    //double* x = xg + loc();
-    //for (size_t j = 0; j < m_points; j++) {
-    //    double* Y = x + m_nv*j + c_offset_Y;
-    //    m_thermo->setMassFractions(Y);
-    //    m_thermo->getMassFractions(Y);
-    //}
+    // TODO : Reset negative values
+    double* x = xg + loc();
+    for (size_t j = 0; j < m_points; j++) {
+        double* X = x + m_nv*j;
+
+        // Clip to zero
+        X[c_offset_ml] = std::max(X[c_offset_ml],0.0);
+        X[c_offset_nl] = std::max(X[c_offset_nl],0.0);
+    }
 }
 
 void SprayLiquid::setGasDomain(SprayGas* gas) {
@@ -1437,7 +1442,7 @@ std::vector<bool> SprayGas::get_equilibrium_status() {
   std::cout << "Current status: ";
   for (size_t i = 0; i < m_points; i++) {
     // Set to 1 if super-saturated, 0 if sub-saturated
-    eq_stat[i] = (Y_prev(c_offset_fuel,i) > m_liq->prs(T_prev(i))/m_press ? 1 : 0);
+    eq_stat[i] = (Y_prev(c_offset_fuel,i) >= m_liq->prs(T_prev(i))/m_press ? 1 : 0);
     std::cout << eq_stat[i] << " ";
   }
   std::cout << std::endl;
