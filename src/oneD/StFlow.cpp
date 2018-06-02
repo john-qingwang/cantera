@@ -1371,7 +1371,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             // Continuity. This propagates information right-to-left, since
             // rho_u at point 0 is dependent on rho_u at point 1, but not on
             // mdot from the inlet.
-            if (m_liq->ml_prev(j)>cutoff) {
+            if (m_liq->ml_act_prev(j)>cutoff) {
             rsd[index(c_offset_U,0)] += m_liq->m_nl0*(m_liq->nl_prev(0)*m_liq->mdot(0) + m_liq->nl_prev(1)*m_liq->mdot(1))/2.0;
             }
 
@@ -1383,7 +1383,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //------------------------------------------------
             //    Coninuity equation
             //------------------------------------------------
-            if (m_liq->ml_prev(j)>cutoff) {
+            if (m_liq->ml_act_prev(j)>cutoff) {
             rsd[index(c_offset_U,j)] += m_liq->m_nl0*
                                      (m_liq->nl_prev(j)*m_liq->mdot(j) + m_liq->nl_prev(j+1)*m_liq->mdot(j+1))/2.0;
             }
@@ -1395,7 +1395,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //       = d(\mu dV/dz)/dz - lambda
             //         + nl mdot (Ul - Ug) - nl Fr
             //-------------------------------------------------
-            if (m_liq->ml_prev(j)>cutoff) {
+            if (m_liq->ml_act_prev(j)>cutoff) {
              rsd[index(c_offset_V,j)] -= m_liq->m_nl0*( m_liq->nl_prev(j) * Fr(x,j) / m_rho[j] );
              rsd[index(c_offset_V,j)] += m_liq->m_nl0* 
                 (m_liq->nl_prev(j) * m_liq->mdot(j) * (m_liq->Ul_prev(j)-V(x,j)) - m_liq->nl_prev(j) * Fr(x,j)) / m_rho[j];
@@ -1414,7 +1414,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
                 } else {
                     delta_kf = 0.0;
                 }
-            if (m_liq->ml_prev(j)>cutoff) {
+            if (m_liq->ml_act_prev(j)>cutoff) {
                 rsd[index(c_offset_Y + k, j)] += 
                     m_liq->m_nl0*(delta_kf - Y(x,k,j)) * m_liq->nl_prev(j) * m_liq->mdot(j) / m_rho[j];
             }
@@ -1428,7 +1428,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //      - sum_k(J_k c_p_k / M_k) dT/dz
             //      + nl mdot cp (Tl - Tg) - nl mdot q
             //-----------------------------------------------
-            if (m_liq->ml_prev(j)>cutoff) {
+            if (m_liq->ml_act_prev(j)>cutoff) {
             rsd[index(c_offset_T, j)] += m_liq->m_nl0*( 
                 (m_liq->nl_prev(j) * m_liq->mdot(j) * m_cp[j] * (m_liq->Tl_prev(j) - T(x,j)) - 
                  m_liq->nl_prev(j) * m_liq->mdot(j) * m_liq->q(j))) / (m_rho[j]*m_cp[j]);
