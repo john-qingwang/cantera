@@ -1439,13 +1439,10 @@ void SprayGas::eval(size_t jg, doublereal* xg,
 
 std::vector<bool> SprayGas::get_equilibrium_status() {
   std::vector<bool> eq_stat(m_points);
-  std::cout << "Current status: ";
   for (size_t i = 0; i < m_points; i++) {
     // Set to 1 if super-saturated, 0 if sub-saturated
     eq_stat[i] = (Y_prev(c_offset_fuel,i) >= m_liq->prs(T_prev(i))/m_press ? 1 : 0);
-    std::cout << eq_stat[i] << " ";
   }
-  std::cout << std::endl;
   return eq_stat;
 }
 
