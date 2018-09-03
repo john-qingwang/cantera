@@ -62,6 +62,7 @@ StFlow::StFlow(IdealGasPhase* ph, size_t nsp, size_t points) :
     m_wdot.resize(m_nsp,m_points, 0.0);
     m_ybar.resize(m_nsp);
     m_qdotRadiation.resize(m_points, 0.0);
+    m_HRR.resize(m_points, 0.0);
 
     //-------------- default solution bounds --------------------
     setBounds(0, -1e20, 1e20); // no bounds on u
@@ -112,6 +113,7 @@ void StFlow::resize(size_t ncomponents, size_t points)
     m_wdot.resize(m_nsp,m_points, 0.0);
     m_do_energy.resize(m_points,false);
     m_qdotRadiation.resize(m_points, 0.0);
+    m_HRR.resize(m_points, 0.0);
     m_fixedtemp.resize(m_points);
 
     m_dz.resize(m_points-1);
@@ -415,23 +417,27 @@ void StFlow::eval(size_t jg, doublereal* xg,
             //-----------------------------------------------
             if (m_do_energy[j]) {
                 setGas(x,j);
+                getHRR(x,j);
 
-                // heat release term
-                const vector_fp& h_RT = m_thermo->enthalpy_RT_ref();
+                // heat release term (commented terms already calculated in getHRR)
+                // const vector_fp& h_RT = m_thermo->enthalpy_RT_ref();
                 const vector_fp& cp_R = m_thermo->cp_R_ref();
-                double sum = 0.0;
+                //double sum = 0.0;
                 double sum2 = 0.0;
                 for (size_t k = 0; k < m_nsp; k++) {
                     double flxk = 0.5*(m_flux(k,j-1) + m_flux(k,j));
-                    sum += wdot(k,j)*h_RT[k];
+                    // sum += wdot(k,j)*h_RT[k];
                     sum2 += flxk*cp_R[k]/m_wt[k];
                 }
-                sum *= GasConstant * T(x,j);
+                // sum *= GasConstant * T(x,j);
                 double dtdzj = dTdz(x,j);
                 sum2 *= GasConstant * dtdzj;
 
+                double hdot_;
+                hdot_ = this->hdot(j);
+
                 rsd[index(c_offset_T, j)] = - m_cp[j]*rho_u(x,j)*dtdzj
-                                            - divHeatFlux(x,j) - sum - sum2;
+                                            - divHeatFlux(x,j) - hdot_ - sum2;
                 rsd[index(c_offset_T, j)] /= (m_rho[j]*m_cp[j]);
                 rsd[index(c_offset_T, j)] -= rdt*(T(x,j) - T_prev(j));
                 rsd[index(c_offset_T, j)] -= (m_qdotRadiation[j] / (m_rho[j] * m_cp[j]));

@@ -243,15 +243,32 @@ public:
         return m_kExcessRight;
     }
 
-protected:
     doublereal wdot(size_t k, size_t j) const {
         return m_wdot(k,j);
     }
+
+    doublereal hdot(size_t j) const {
+        return m_HRR[j];
+    }
+protected:
 
     //! Write the net production rates at point `j` into array `m_wdot`
     void getWdot(doublereal* x, size_t j) {
         setGas(x,j);
         m_kin->getNetProductionRates(&m_wdot(0,j));
+    }
+
+    //! Write the net production rates at point `j` into array `m_HRR`
+    //! Assuming wdot is already populated
+    void getHRR(doublereal* x, size_t j) {
+        setGas(x,j);
+        const vector_fp& h_RT = m_thermo->enthalpy_RT_ref();
+        double sum = 0.0;
+        for (size_t k = 0; k < m_nsp; k++)
+            sum += wdot(k,j)*h_RT[k];
+        sum *= GasConstant * T(x,j);
+
+        m_HRR[j] = sum;
     }
 
     /**
@@ -391,6 +408,7 @@ protected:
 
     // production rates
     Array2D m_wdot;
+    vector_fp m_HRR;
 
     size_t m_nsp;
 
