@@ -63,6 +63,7 @@ StFlow::StFlow(IdealGasPhase* ph, size_t nsp, size_t points) :
     m_ybar.resize(m_nsp);
     m_qdotRadiation.resize(m_points, 0.0);
     m_HRR.resize(m_points, 0.0);
+    m_totH.resize(m_points, 0.0);
 
     //-------------- default solution bounds --------------------
     setBounds(0, -1e20, 1e20); // no bounds on u
@@ -114,6 +115,7 @@ void StFlow::resize(size_t ncomponents, size_t points)
     m_do_energy.resize(m_points,false);
     m_qdotRadiation.resize(m_points, 0.0);
     m_HRR.resize(m_points, 0.0);
+    m_totH.resize(m_points, 0.0);
     m_fixedtemp.resize(m_points);
 
     m_dz.resize(m_points-1);
@@ -416,10 +418,9 @@ void StFlow::eval(size_t jg, doublereal* xg,
             //      - sum_k(J_k c_p_k / M_k) dT/dz
             //-----------------------------------------------
             if (m_do_energy[j]) {
-                setGas(x,j);
-                getHRR(x,j);
+                getHeatStuff(x,j);
 
-                // heat release term (commented terms already calculated in getHRR)
+                // heat release term (commented terms already calculated in getHeatStuff)
                 // const vector_fp& h_RT = m_thermo->enthalpy_RT_ref();
                 const vector_fp& cp_R = m_thermo->cp_R_ref();
                 //double sum = 0.0;

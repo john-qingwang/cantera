@@ -250,6 +250,10 @@ public:
     doublereal hdot(size_t j) const {
         return m_HRR[j];
     }
+
+    doublereal enth(size_t j) const {
+        return m_totH[j];
+    }
 protected:
 
     //! Write the net production rates at point `j` into array `m_wdot`
@@ -260,7 +264,7 @@ protected:
 
     //! Write the net production rates at point `j` into array `m_HRR`
     //! Assuming wdot is already populated
-    void getHRR(doublereal* x, size_t j) {
+    void getHeatStuff(doublereal* x, size_t j) {
         setGas(x,j);
         const vector_fp& h_RT = m_thermo->enthalpy_RT_ref();
         double sum = 0.0;
@@ -269,6 +273,9 @@ protected:
         sum *= GasConstant * T(x,j);
 
         m_HRR[j] = sum;
+
+        // Also populate total enthalpy
+        m_totH[j] = m_thermo->enthalpy_mass();
     }
 
     /**
@@ -409,6 +416,7 @@ protected:
     // production rates
     Array2D m_wdot;
     vector_fp m_HRR;
+    vector_fp m_totH;
 
     size_t m_nsp;
 
