@@ -254,6 +254,10 @@ public:
     doublereal enth(size_t j) const {
         return m_totH[j];
     }
+
+    doublereal Zg(size_t j) const {
+        return m_zg[j];
+    }
 protected:
 
     //! Write the net production rates at point `j` into array `m_wdot`
@@ -274,9 +278,10 @@ protected:
 
         m_HRR[j] = sum;
 
-        // Also populate total enthalpy
-        m_totH[j] = m_thermo->enthalpy_mass();
+        // Also populate total enthalpy (negative to be consistent with FM)
+        m_totH[j] = -m_thermo->enthalpy_mass();
     }
+
 
     /**
      * Update the thermodynamic properties from point j0 to point j1
@@ -396,6 +401,8 @@ protected:
 
     // grid parameters
     vector_fp m_dz;
+    // mixture fraction
+    vector_fp m_zg;
 
     // mixture thermo properties
     vector_fp m_rho;
@@ -548,6 +555,21 @@ public:
     doublereal fuel_fraction(size_t j) {
       return Y_prev(c_offset_fuel,j);
     }
+
+    void getZg(doublereal* x, size_t j) {
+        setGas(x,j);
+        double Wf = m_thermo->molecularWeight(c_offset_fuel);
+        size_t c_idx = m_thermo->elementIndex("C");
+        double ncf = m_thermo->nAtoms(c_offset_fuel,c_idx);
+        double sum = 0.0;
+        for (size_t k = 0; k < m_nsp; k++) {
+          double nck = m_thermo->nAtoms(k,c_idx);
+          sum += Y(x,k,j)*nck/m_thermo->molecularWeight(k);
+        }
+
+        m_zg[j] = (Wf/ncf)*sum;
+    }
+
 protected:
     std::vector<bool> get_equilibrium_status();
 
@@ -565,6 +587,7 @@ protected:
 
     // Store equilibrium status
     std::vector<bool> m_eq_stat;
+
 };
 
 /**
@@ -663,6 +686,10 @@ public:
       // Antoine Equation
       // (Elliott, Lira, Introductory Chemical Engineering Thermodynamics, 2012)
       return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+T)) * m_cvt;
+    }
+
+    doublereal Zl(size_t j) {
+        return m_zl[j];
     }
 protected:
 
@@ -859,6 +886,10 @@ protected:
         return 3.0*Pi*dl(x,j)*m_gas->m_visc[j]*(m_gas->u_prev(j)-vl(x,j));
     }
 
+    void getZl(doublereal* x, size_t j) {
+        m_zl[j] = m_nl0*nl(x,j)*ml_act(x,j)/m_gas->m_rho[j];
+    }
+
     //! @}
     
     //! @name convective spatial derivatives.
@@ -939,6 +970,8 @@ protected:
     doublereal m_Lv;
     // grid parameters
     vector_fp m_dz;
+    // mixture fraction
+    vector_fp m_zl;
     // AV coefficients
     doublereal m_visc_ml, m_visc_nl, m_visc_Tl, m_visc_Ul, m_visc_vl;
     // Linked gas flamelet class

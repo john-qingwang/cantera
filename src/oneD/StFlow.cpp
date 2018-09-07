@@ -64,6 +64,7 @@ StFlow::StFlow(IdealGasPhase* ph, size_t nsp, size_t points) :
     m_qdotRadiation.resize(m_points, 0.0);
     m_HRR.resize(m_points, 0.0);
     m_totH.resize(m_points, 0.0);
+    m_zg.resize(m_points, 0.0);
 
     //-------------- default solution bounds --------------------
     setBounds(0, -1e20, 1e20); // no bounds on u
@@ -120,6 +121,7 @@ void StFlow::resize(size_t ncomponents, size_t points)
 
     m_dz.resize(m_points-1);
     m_z.resize(m_points);
+    m_zg.resize(m_points);
 
 }
 
@@ -408,6 +410,7 @@ void StFlow::eval(size_t jg, doublereal* xg,
                   - rdt*(Y(x,k,j) - Y_prev(k,j));
                 diag[index(c_offset_Y + k, j)] = 1;
             }
+
 
             //-----------------------------------------------
             //    energy equation
@@ -1059,6 +1062,7 @@ void SprayLiquid::resize(size_t ncomponents, size_t points)
     Domain1D::resize(ncomponents, points);
     m_dz.resize(m_points-1);
     m_z.resize(m_points);
+    m_zl.resize(m_points);
 }
 
 void SprayLiquid::eval(size_t jg, doublereal* xg,
@@ -1155,6 +1159,9 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             rsd[index(c_offset_vl,j)] += fz(x,j)/ml_act(x,j);
             }
             diag[index(c_offset_vl, j)] = 1;
+
+            // Compute liquid mixture fraction
+            getZl(x,j);
 
             //-----------------------------------------------
             //    energy equation
@@ -1425,7 +1432,11 @@ void SprayGas::eval(size_t jg, doublereal* xg,
                 rsd[index(c_offset_Y + k, j)] += 
                     m_liq->m_nl0*(delta_kf - Y(x,k,j)) * m_liq->nl_prev(j) * m_liq->mdot(j) / m_rho[j];
             }
-            } 
+            }
+ 
+            // Compute mixture fraction
+            getZg(x,j);
+
             //-----------------------------------------------
             //    energy equation
             //
