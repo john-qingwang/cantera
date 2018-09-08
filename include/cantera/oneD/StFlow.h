@@ -272,8 +272,9 @@ protected:
         setGas(x,j);
         const vector_fp& h_RT = m_thermo->enthalpy_RT_ref();
         double sum = 0.0;
-        for (size_t k = 0; k < m_nsp; k++)
-            sum += wdot(k,j)*h_RT[k];
+        for (size_t k = 0; k < m_nsp; k++) {
+            sum += wdot(k,j)*h_RT[k]/m_wt[k];
+        }
         sum *= GasConstant * T(x,j);
 
         m_HRR[j] = sum;
