@@ -750,7 +750,7 @@ protected:
     }
 
     doublereal ml_act_prev(size_t j) const {
-        return prevSoln(c_offset_ml,j);
+        return m_ml0*prevSoln(c_offset_ml,j);
     }
 
     doublereal& ml(doublereal* x, size_t j) const {
