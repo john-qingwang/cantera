@@ -258,6 +258,9 @@ public:
     doublereal Zg(size_t j) const {
         return m_zg[j];
     }
+
+    void updateFuelSpecies(const std::string fuel_name);
+
 protected:
 
     //! Write the net production rates at point `j` into array `m_wdot`
@@ -269,7 +272,7 @@ protected:
     //! Write the net production rates at point `j` into array `m_HRR`
     //! Assuming wdot is already populated
     void getHeatStuff(doublereal* x, size_t j) {
-        setGas(x,j);
+        //setGas(x,j);  // Already set in getWdot
         const vector_fp& h_RT = m_thermo->enthalpy_RT_ref();
         double sum = 0.0;
         for (size_t k = 0; k < m_nsp; k++) {
@@ -427,6 +430,8 @@ protected:
     vector_fp m_totH;
 
     size_t m_nsp;
+    size_t c_offset_fuel;
+
 
     IdealGasPhase* m_thermo;
     Kinetics* m_kin;
@@ -549,8 +554,6 @@ public:
 
     void setLiquidDomain(SprayLiquid* gas);
 
-    void updateFuelSpecies(const std::string fuel_name);
-
     bool check_for_liquid_step();
 
     doublereal fuel_fraction(size_t j) {
@@ -581,8 +584,6 @@ protected:
     doublereal Dgf(size_t j);
 
     doublereal cpgf(size_t j); 
-
-    size_t c_offset_fuel;
 
     SprayLiquid* m_liq;
 

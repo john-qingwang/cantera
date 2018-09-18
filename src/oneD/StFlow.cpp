@@ -565,6 +565,10 @@ string StFlow::componentName(size_t n) const
     }
 }
 
+void StFlow::updateFuelSpecies(const std::string fuel_name) {
+    c_offset_fuel = componentIndex(fuel_name)-c_offset_Y;
+}
+
 size_t StFlow::componentIndex(const std::string& name) const
 {
     if (name=="u") {
@@ -1345,10 +1349,6 @@ doublereal SprayGas::Dgf(size_t j) {
 
 doublereal SprayGas::cpgf(size_t j) {
     return m_cp[j];
-}
-
-void SprayGas::updateFuelSpecies(const std::string fuel_name) {
-    c_offset_fuel = componentIndex(fuel_name)-c_offset_Y;
 }
 
 void SprayGas::eval(size_t jg, doublereal* xg,
