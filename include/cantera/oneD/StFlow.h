@@ -255,7 +255,8 @@ public:
         return m_totH[j];
     }
 
-    doublereal Zg(size_t j) const {
+    doublereal Zg(size_t j) {
+        getZg(j);
         return m_zg[j];
     }
 
@@ -286,6 +287,19 @@ protected:
         m_totH[j] = -m_thermo->enthalpy_mass();
     }
 
+    void getZg(size_t j) {
+        setGas(prevSolnPtr(),j);
+        double Wf = m_thermo->molecularWeight(c_offset_fuel);
+        size_t c_idx = m_thermo->elementIndex("C");
+        double ncf = m_thermo->nAtoms(c_offset_fuel,c_idx);
+        double sum = 0.0;
+        for (size_t k = 0; k < m_nsp; k++) {
+          double nck = m_thermo->nAtoms(k,c_idx);
+          sum += Y(prevSolnPtr(),k,j)*nck/m_thermo->molecularWeight(k);
+        }
+
+        m_zg[j] = (Wf/ncf)*sum;
+    }
 
     /**
      * Update the thermodynamic properties from point j0 to point j1
@@ -560,20 +574,6 @@ public:
       return Y_prev(c_offset_fuel,j);
     }
 
-    void getZg(doublereal* x, size_t j) {
-        setGas(x,j);
-        double Wf = m_thermo->molecularWeight(c_offset_fuel);
-        size_t c_idx = m_thermo->elementIndex("C");
-        double ncf = m_thermo->nAtoms(c_offset_fuel,c_idx);
-        double sum = 0.0;
-        for (size_t k = 0; k < m_nsp; k++) {
-          double nck = m_thermo->nAtoms(k,c_idx);
-          sum += Y(x,k,j)*nck/m_thermo->molecularWeight(k);
-        }
-
-        m_zg[j] = (Wf/ncf)*sum;
-    }
-
 protected:
     std::vector<bool> get_equilibrium_status();
 
@@ -691,6 +691,7 @@ public:
     }
 
     doublereal Zl(size_t j) {
+        getZl(j);
         return m_zl[j];
     }
 protected:
@@ -888,8 +889,8 @@ protected:
         return 3.0*Pi*dl(x,j)*m_gas->m_visc[j]*(m_gas->u_prev(j)-vl(x,j));
     }
 
-    void getZl(doublereal* x, size_t j) {
-        m_zl[j] = m_nl0*nl(x,j)*ml_act(x,j)/m_gas->m_rho[j];
+    void getZl(size_t j) {
+        m_zl[j] = m_nl0*nl(prevSolnPtr(),j)*ml_act(prevSolnPtr(),j)/m_gas->m_rho[j];
     }
 
     //! @}

@@ -1162,9 +1162,6 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             }
             diag[index(c_offset_vl, j)] = 1;
 
-            // Compute liquid mixture fraction
-            getZl(x,j);
-
             //-----------------------------------------------
             //    energy equation
             //
@@ -1431,9 +1428,6 @@ void SprayGas::eval(size_t jg, doublereal* xg,
                     m_liq->m_nl0*(delta_kf - Y(x,k,j)) * m_liq->nl_prev(j) * m_liq->mdot(j) / m_rho[j];
             }
             }
- 
-            // Compute mixture fraction
-            getZg(x,j);
 
             //-----------------------------------------------
             //    energy equation
