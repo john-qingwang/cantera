@@ -704,6 +704,14 @@ public:
         getZl(xloc,j);
         return m_zl[j];
     }
+
+    doublereal getInitNumberDensity() {
+      return m_nl0;
+    }
+  
+    doublereal getInitDropletMass() {
+      return m_ml0;
+    }
 protected:
 
     //! @name Solution components
@@ -869,6 +877,7 @@ protected:
         else {
             Bm = (Yrs_- m_gas->Y_prev(m_gas->c_offset_fuel,j)) / 
             std::max(1.0-Yrs_,std::sqrt(std::numeric_limits<double>::min()));
+            Bm = std::max(0.0,Bm);
         }
         doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rho[j]*m_gas->Dgf(j)*std::log(1.0+Bm);
         return mdot_;
@@ -902,6 +911,7 @@ protected:
     void getZl(const doublereal* xloc, size_t j) {
         m_zl[j] = m_nl0*nl(xloc,j)*ml_act(xloc,j)/m_gas->m_rho[j];
     }
+
 
     //! @}
     

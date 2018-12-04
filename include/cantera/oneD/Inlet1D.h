@@ -328,6 +328,10 @@ public:
 
     virtual void showSolution(const double* x);
 
+    void setLiquidMixtureFraction(const doublereal zl) { 
+    // Blank function to enable compilation
+    }
+
     void setNumberDensity(const doublereal nl) {
         m_nl0 = nl;
         m_spFlow->m_nl0 = nl;
