@@ -284,8 +284,8 @@ protected:
 
         m_HRR[j] = sum;
 
-        // Also populate total enthalpy (negative to be consistent with FM)
-        m_totH[j] = -m_thermo->enthalpy_mass();
+        // Also populate total enthalpy
+        m_totH[j] = m_thermo->enthalpy_mass();
     }
 
     void getZg(const doublereal* xloc, size_t j) {
