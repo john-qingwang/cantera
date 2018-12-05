@@ -712,6 +712,18 @@ public:
     doublereal getInitDropletMass() {
       return m_ml0;
     }
+
+    void setAccelEvap(bool val) {
+      m_accel_evap = val;
+    }
+
+    void setTime(doublereal t_) {
+      m_t = t_;
+    }
+
+    void updateEvapConstant() {
+      m_evap_cst = std::max(1.0,m_max - m_t/m_t_relax);
+    }
 protected:
 
     //! @name Solution components
@@ -880,6 +892,11 @@ protected:
             Bm = std::max(0.0,Bm);
         }
         doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rho[j]*m_gas->Dgf(j)*std::log(1.0+Bm);
+        // Set ramping based on current time
+        if (m_accel_evap) {
+          updateEvapConstant();
+          mdot_ *= m_evap_cst;
+        }
         return mdot_;
     }
 
@@ -891,7 +908,7 @@ protected:
         if (mdot(x,j)<= cutoff) {
             return 0.0;
         } else {
-            doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_gas->m_rho[j]*m_gas->Dgf(j)*dl(x,j)))-1.0;
+            doublereal BT = std::exp((mdot(x,j)/m_evap_cst)/(2.0*Pi*m_gas->m_rho[j]*m_gas->Dgf(j)*dl(x,j)))-1.0;
             return m_gas->cpgf(j)*(m_gas->T_prev(j)-Tl(x,j))/BT;
         }
     }
@@ -989,6 +1006,10 @@ protected:
     doublereal m_ml0;
     // Store initial number density for scaling
     doublereal m_nl0;
+    // Accelerated evaporation for cold flamelets
+    bool m_accel_evap;
+    // Simulation time
+    doublereal m_t;
     // Latent heat
     doublereal m_Lv;
     // grid parameters
@@ -999,6 +1020,12 @@ protected:
     doublereal m_visc_ml, m_visc_nl, m_visc_Tl, m_visc_Ul, m_visc_vl;
     // Linked gas flamelet class
     SprayGas* m_gas;
+    // Constants
+    doublereal m_max = 10.0;
+    // Relaxation time
+    doublereal m_t_relax = 0.1;
+    // Evaporation constat
+    doublereal m_evap_cst;
 };
 
 }
