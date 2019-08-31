@@ -7,8 +7,9 @@
 
 #ifndef CT_SIM1D_H
 #define CT_SIM1D_H
-
+#include "Inlet1D.h"
 #include "OneDim.h"
+#include <cmath> // for std::abs
 
 namespace Cantera
 {
@@ -128,6 +129,9 @@ public:
     /// Refine the grid in all domains.
     int refine(int loglevel=0);
 
+    // Refine the grid and sync with another instance
+    int refine_and_sync(int loglevel, Sim1D& other);
+
     //! Add node for fixed temperature point of freely propagating flame
     int setFixedTemperature(doublereal t);
 
@@ -176,12 +180,151 @@ public:
 
     void getInitialSoln();
 
+    doublereal steady_norm();
+
+    doublereal diff_norm();
+
+    doublereal take_step(int loglevel, int nsteps, doublereal dt);
+
     void setSolution(const doublereal* soln) {
         std::copy(soln, soln + m_x.size(), m_x.data());
     }
 
     const doublereal* solution() const {
         return m_x.data();
+    }
+
+    vector_fp& solutionVector() {
+      return m_x;
+    }
+
+    size_t systemSize() const {
+         return m_x.size();
+    }
+
+    void updateBounds() { 
+      Domain1D& dom = domain(1);
+      size_t nv = dom.nComponents();
+      size_t np = dom.nPoints();
+      // The last element is for the continuation parameter
+      // Defaults to strain rate
+      lb.resize(nv*np + 1);
+      ub.resize(nv*np + 1);
+      for (size_t j = 0; j < np; j++) {
+        for (size_t i = 0; i < nv; i++) {
+          lb[j*nv + i] = dom.lowerBound(i);
+          ub[j*nv + i] = dom.upperBound(i);
+        }
+      }
+      lb[nv*np] = 0.0;
+      ub[nv*np] = 1e10;
+    }
+
+    void scaleBounds(std::vector<double>& scale) {
+      Domain1D& dom = domain(1);
+      size_t nv = dom.nComponents();
+      size_t np = dom.nPoints();
+      for (size_t j = 0; j < np; j++) {
+        for (size_t i = 0; i < nv; i++) {
+          lb[j*nv + i] = dom.lowerBound(i)/scale[j*nv + i];
+          ub[j*nv + i] = dom.upperBound(i)/scale[j*nv + i];
+        }
+      }
+      lb[nv*np] = 0.0/scale[nv*np];
+      ub[nv*np] = 1e10/scale[nv*np];
+    }
+
+    double* lowerBound() {
+      return lb.data();
+    }
+
+    double* upperBound() {
+      return ub.data();
+    }
+
+    double StrainRate() {
+      return m_chi;
+    }
+
+    void setStrainRateValue(double a1) {
+      m_chi = a1;
+    }
+
+    void setFuelVelocity(double uin_f) {
+      m_uin_f = uin_f;
+    }
+
+    void setOxidizerVelocity(double uin_o) { 
+      m_uin_o = uin_o;
+    }
+
+    void setFuelDensity(double rhoin_f) {
+      m_rhoin_f = rhoin_f;
+    }
+ 
+    void setOxidizerDensity(double rhoin_o) {
+      m_rhoin_o = rhoin_o;
+    }
+ 
+    void setStrainRate(int nvar, double* x) {
+        double a1 = x[nvar-1];
+        
+        Domain1D& flow = domain(1);
+        SprayInlet1D& inlet_f = static_cast<SprayInlet1D&>(domain(0));
+        SprayOutlet1D& inlet_o = static_cast<SprayOutlet1D&>(domain(2));
+       
+        double ratio = a1/m_chi;
+ 
+        // Amplify velocities including spray
+        size_t u_index = flow.componentIndex("u");
+        size_t V_index = flow.componentIndex("V");
+        size_t Ul_index = flow.componentIndex("Ul");
+        size_t vl_index = flow.componentIndex("vl");
+        size_t nPoints = flow.nPoints();
+        for (size_t i = 0; i < nPoints; i++) {
+          double u_loc = value(1,u_index,i);
+          setValue(1,u_index,i,u_loc*ratio);
+          double V_loc = value(1,V_index,i);
+          setValue(1,V_index,i,V_loc*ratio);
+          double Ul_loc = value(1,Ul_index,i);
+          setValue(1,Ul_index,i,Ul_loc*ratio);
+          double vl_loc = value(1,vl_index,i);
+          setValue(1,vl_index,i,vl_loc*ratio);
+        }
+
+        m_uin_f *= ratio;
+        m_uin_o *= ratio;
+        
+        // update the boundary condition
+        double mdot_f = m_rhoin_f * m_uin_f;
+        inlet_f.setMdot(mdot_f);
+        double mdot_o = m_rhoin_o * m_uin_o;
+        inlet_o.setMdot(mdot_o);
+
+        // update spray boundary condition
+        inlet_f.setDropletInjectionVel(m_uin_f);
+
+        m_chi = a1;
+    }
+    
+    // TODO : Update boundary conditions for each a0
+    void unbound_residue(int* nvar,double* fpar,int* ipar,double* x,double* f) {
+      // Scale up solution
+      for (int i = 0; i < *nvar; i++)
+        x[i] *= fpar[i];
+
+      // Copy scaled solution to flame
+      setSolution(x);
+
+      // Set strain rate
+      setStrainRate(*nvar,x);
+
+      // Evaluate residual using border
+      getResidual(0.0, f);
+
+      // Scale down solution
+      for (int i = 0; i < *nvar; i++)
+        x[i] /= fpar[i];
     }
 
     doublereal jacobian(int i, int j);
@@ -212,6 +355,12 @@ public:
         m_steady_callback = callback;
     }
 
+    //! Newton solver for one step
+    //! For development purpose only
+    int newtonSolveExt(int loglevel) {
+        return newtonSolve(loglevel);
+    }
+
 protected:
     //! the solution vector
     vector_fp m_x;
@@ -236,6 +385,15 @@ protected:
     //! array of number of steps to take before re-attempting the steady-state
     //! solution
     vector_int m_steps;
+
+    // Strain rate
+    double m_chi;
+
+    // Counterflow boundary conditions
+    double m_uin_f, m_uin_o, m_rhoin_f, m_rhoin_o;
+
+    // Lower and upper bounds - required for continuation
+    std::vector<double> lb, ub;
 
     //! User-supplied function called after a successful steady-state solve.
     Func1* m_steady_callback;

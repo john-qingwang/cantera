@@ -23,7 +23,7 @@ OneDim::OneDim()
       m_init(false), m_pts(0), m_solve_time(0.0),
       m_ss_jac_age(20), m_ts_jac_age(20),
       m_interrupt(0), m_time_step_callback(0),
-      m_nsteps(0), m_nsteps_max(500),
+      m_nsteps(0), m_nsteps_max(5000),
       m_nevals(0), m_evaltime(0.0)
 {
     m_newt.reset(new MultiNewton(1));
@@ -36,7 +36,7 @@ OneDim::OneDim(vector<Domain1D*> domains) :
     m_init(false), m_solve_time(0.0),
     m_ss_jac_age(20), m_ts_jac_age(20),
     m_interrupt(0), m_time_step_callback(0),
-    m_nsteps(0), m_nsteps_max(500),
+    m_nsteps(0), m_nsteps_max(5000),
     m_nevals(0), m_evaltime(0.0)
 {
     // create a Newton iterator, and add each domain.
@@ -230,6 +230,18 @@ int OneDim::solve(doublereal* x, doublereal* xnew, int loglevel)
         m_jac_ok = true;
     }
 
+    /* // check the Jacobian
+    std::ofstream debug_file;
+    debug_file.open("jac.csv");
+    for (size_t i = 0; i < m_jac->nRows(); i++) {
+        for (size_t j = 0; j < m_jac->nColumns(); j++) {
+            debug_file << m_jac->value(i,j) << ",";
+        }
+        debug_file << std::endl;
+    }
+    debug_file.close();
+    */
+
     return m_newt->solve(x, xnew, *this, *m_jac, loglevel);
 }
 
@@ -368,6 +380,11 @@ doublereal OneDim::timeStep(int nsteps, doublereal dt, doublereal* x,
 
         // solve the transient problem
         int m = solve(x, r, loglevel-1);
+        vector_fp diff(m_size);
+        // compute step
+        for (size_t l = 0; l < m_size; l++)
+          diff[l] = r[l]-x[l];
+        m_change = m_newt->norm2(x,diff.data(),*this);
 
         // successful time step. Copy the new solution in r to
         // the current solution in x.

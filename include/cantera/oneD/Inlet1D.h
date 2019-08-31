@@ -84,8 +84,10 @@ public:
 
 protected:
     void _init(size_t n);
+    void _spray_init(size_t n);
 
     StFlow* m_flow_left, *m_flow_right;
+    SprayLiquid* m_flow_left_sp, *m_flow_right_sp;
     size_t m_ilr, m_left_nv, m_right_nv;
     size_t m_left_loc, m_right_loc;
     size_t m_left_points;
@@ -312,6 +314,87 @@ protected:
     bool m_enabled;
     vector_fp m_work;
     vector_fp m_fixed_cov;
+};
+
+/**
+ * A spray inlet.
+ * @ingroup onedim
+ */
+class SprayInlet1D : public Bdry1D
+{
+public:
+
+    SprayInlet1D();
+
+    virtual void showSolution(const double* x);
+
+    void setLiquidMixtureFraction(const doublereal zl) { 
+    // Blank function to enable compilation
+    }
+
+    void setNumberDensity(const doublereal nl) {
+        m_nl0 = nl;
+        m_spFlow->m_nl0 = nl;
+    }
+
+    void setDropletMass(const doublereal ml) {
+        m_ml0 = ml;
+        m_spFlow->m_ml0 = ml;
+    }
+
+    // TODO
+    // Note u and v are interchanged in liquid formulation
+    void setDropletInjectionVel(const doublereal vl) {
+        m_vl0 = vl;
+    }
+
+    // TODO
+    // Note u and v are interchanged in liquid formulation
+    void setDropletSpreadVel(const doublereal Ul) {
+        m_Ul0 = Ul;
+    }
+
+    void setDropletTemperature(const doublereal Tl) {
+        m_Tl0 = Tl;
+    }
+
+    virtual void init();
+
+    virtual void eval(size_t jg, doublereal* xg, doublereal* rg,
+                  integer* diagg, doublereal rdt);
+
+    virtual XML_Node& save(XML_Node& o, const doublereal* const soln);
+
+protected:
+    doublereal m_nl0;
+    doublereal m_vl0;
+    doublereal m_Ul0;
+    doublereal m_Tl0;
+    doublereal m_ml0;
+
+    SprayLiquid* m_spFlow;
+};
+
+/**
+ * A spray outlet.
+ * @ingroup onedim
+ */
+class SprayOutlet1D : public Bdry1D
+{
+public:
+
+    SprayOutlet1D() : Bdry1D() {}
+
+    virtual void init();
+
+    virtual void eval(size_t jg, doublereal* xg, doublereal* rg,
+                  integer* diagg, doublereal rdt);
+
+    virtual XML_Node& save(XML_Node& o, const doublereal* const soln);
+
+protected:
+    SprayLiquid* m_spFlow;
+
 };
 
 }

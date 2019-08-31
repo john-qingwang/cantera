@@ -15,6 +15,7 @@ namespace Cantera
 
 Bdry1D::Bdry1D() : Domain1D(1, 1, 0.0),
     m_flow_left(0), m_flow_right(0),
+    m_flow_left_sp(0), m_flow_right_sp(0),
     m_ilr(0), m_left_nv(0), m_right_nv(0),
     m_left_loc(0), m_right_loc(0),
     m_left_points(0),
@@ -24,6 +25,45 @@ Bdry1D::Bdry1D() : Domain1D(1, 1, 0.0),
     m_phase_left(0), m_phase_right(0), m_temp(0.0), m_mdot(0.0)
 {
     m_type = cConnectorType;
+}
+
+void Bdry1D::_spray_init(size_t n) {
+    if (m_index == npos) {
+        throw CanteraError("Bdry1D::_spray_init",
+                           "install in container before calling init.");
+    }
+
+    // A boundary object contains only one grid point
+    resize(n,1);
+
+    // check for left and right flow objects
+    if (m_index > 0) {
+        Domain1D& r = container().domain(m_index-1);
+        if (r.domainType() == cSprayType) {
+            m_flow_left_sp = (SprayLiquid*)&r;
+            m_left_nv = m_flow_left_sp->nComponents();
+            m_left_points = m_flow_left_sp->nPoints();
+            m_left_loc = container().start(m_index-1);
+        } else {
+            throw CanteraError("Bdry1D::_spray_init",
+                "Boundary domains can only be connected on the left to spray "
+                "domains, not type {} domains.", r.domainType());
+        }
+    }
+
+    // if this is not the last domain, see what is connected on the right
+    if (m_index + 1 < container().nDomains()) {
+        Domain1D& r = container().domain(m_index+1);
+        if (r.domainType() == cSprayType) {
+            m_flow_right_sp = (SprayLiquid*)&r;
+            m_right_nv = m_flow_right_sp->nComponents();
+            m_right_loc = container().start(m_index+1);
+        } else {
+            throw CanteraError("Bdry1D::_spray_init",
+                "Boundary domains can only be connected on the right to spray "
+                "domains, not type {} domains.", r.domainType());
+        }
+    }
 }
 
 void Bdry1D::_init(size_t n)
@@ -741,4 +781,197 @@ void ReactingSurf1D::showSolution(const double* x)
     }
     writelog("\n");
 }
+
+// -------- SprayInlet1D --------
+//
+SprayInlet1D::SprayInlet1D() : 
+    Bdry1D(), m_nl0(0), m_vl0(0), m_Ul0(0), m_Tl0(0), m_ml0(0) 
+{}
+
+void SprayInlet1D::init() 
+{
+    _spray_init(0);
+
+    // if a flow domain is present on the left, then this must be a right inlet.
+    // Note that an inlet object can only be a terminal object - it cannot have
+    // flows on both the left and right
+    if (m_flow_left_sp) {
+        m_ilr = RightInlet;
+        m_spFlow = m_flow_left_sp;
+    } else if (m_flow_right_sp) {
+        m_ilr = LeftInlet;
+        m_spFlow = m_flow_right_sp;
+    } else {
+        throw CanteraError("SprayInlet1D::init","no flow!");
+    }
+}
+
+// TODO : Change comments
+void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
+            integer* diagg, doublereal rdt)
+{
+    if (jg != npos && (jg + 2 < firstPoint() || jg > lastPoint() + 2)) {
+        return;
+    }
+
+    double* rb;
+    if (m_ilr == LeftInlet) {
+        // Array elements corresponding to the first point of the flow domain
+        rb = rg + m_spFlow->loc();
+    } else {
+        // right inlet
+        // Array elements corresponding to the flast point in the flow domain
+        rb = rg + loc() - m_spFlow->nComponents();
+    }
+
+    // The first flow residual is for u. This, however, is not modified by
+    // the inlet, since this is set within the flow domain from the
+    // continuity equation.
+    // Rescaled nl equation
+    rb[c_offset_nl] -= 1.0;
+
+    // spreading rate. The flow domain sets this to V(0),
+    // so for finite spreading rate subtract m_V0.
+    rb[c_offset_Ul] -= m_Ul0;
+
+    rb[c_offset_vl] -= m_vl0;
+
+    // The third flow residual is for T, where it is set to T(0).  Subtract
+    // the local temperature to hold the flow T to the inlet T.
+    rb[c_offset_Tl] -= m_Tl0;
+
+    // Rescaled ml equation
+    rb[c_offset_ml] -= 1.0;
+}
+
+void SprayInlet1D::showSolution(const double* x)
+{
+    writelog("    Injection velocity:   {:10.4g} m/s \n", m_vl0);
+    writelog("    Injection temperature: {:10.4g} K \n", m_Tl0);
+    writelog("    Droplet mass: {:10.4g} Kg \n", m_ml0);
+    writelog("    Number density: {:10.4g} \n", m_nl0);
+    writelog("\n");
+}
+XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
+{
+    XML_Node& inlt = Domain1D::save(o, soln);
+    XML_Node& gv = inlt.addChild("spray_inlet");
+
+    addFloat(gv, "Ul", soln[c_offset_Ul]);
+    addFloat(gv, "vl", soln[c_offset_vl]);
+    addFloat(gv, "Tl", soln[c_offset_Tl]);
+    addFloat(gv, "ml", soln[c_offset_ml]);
+    addFloat(gv, "nl", soln[c_offset_nl]);
+
+    addFloat(gv, "prs", m_spFlow->prs(0));
+    addFloat(gv, "Lv", m_spFlow->Lv());
+    addFloat(gv, "cpl", m_spFlow->cpl(soln,0));
+    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,0));
+    addFloat(gv, "mdot", m_spFlow->mdot(soln,0));
+    addFloat(gv, "q", m_spFlow->q(soln,0));
+    addFloat(gv, "Fr", m_spFlow->Fr(soln,0));
+    addFloat(gv, "fz", m_spFlow->fz(soln,0));
+
+    return inlt;
+}
+
+// -------- SprayOutlet1D --------
+//
+void SprayOutlet1D::init()
+{
+    _spray_init(0);
+
+    // if a flow domain is present on the left, then this must be a right inlet.
+    // Note that an inlet object can only be a terminal object - it cannot have
+    // flows on both the left and right
+    if (m_flow_left_sp) {
+        m_ilr = RightInlet;
+        m_spFlow = m_flow_left_sp;
+    } else if (m_flow_right_sp) {
+        m_ilr = LeftInlet;
+        m_spFlow = m_flow_right_sp;
+    } else {
+        throw CanteraError("SprayOutlet1D::init","no flow!");
+    }
+}
+
+// TODO: Comment why function is this way
+void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* diagg,
+                    doublereal rdt)
+{
+    if (jg != npos && (jg + 2 < firstPoint() || jg > lastPoint() + 2)) {
+        return;
+    }
+
+    // start of local part of global arrays
+    doublereal* x = xg + loc();
+    doublereal* r = rg + loc();
+    integer* diag = diagg + loc();
+
+    if (m_flow_right_sp) {
+        size_t nc = m_flow_right_sp->nComponents();
+        double* xb = x;
+        double* rb = r;
+        int* db = diag;
+
+        rb[c_offset_Ul] = xb[c_offset_Ul] - xb[c_offset_Ul + nc];
+        rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl + nc];
+        rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl + nc];
+        rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml + nc];
+        rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl + nc];
+
+        db[c_offset_Ul] = 0;
+        db[c_offset_vl] = 0; 
+        db[c_offset_Tl] = 0;
+        db[c_offset_ml] = 0;
+        db[c_offset_nl] = 0;
+
+    }
+
+    if (m_flow_left_sp) {
+        // right inlet
+        size_t nc = m_flow_left_sp->nComponents();
+        double* xb = x - nc;
+        double* rb = r - nc;
+        int* db = diag - nc;
+
+        rb[c_offset_Ul] = xb[c_offset_Ul] - xb[c_offset_Ul - nc];
+        rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl - nc];
+        rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl - nc];
+        rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml - nc];
+        rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl - nc];
+
+        db[c_offset_Ul] = 0;
+        db[c_offset_vl] = 0; 
+        db[c_offset_Tl] = 0;
+        db[c_offset_ml] = 0;
+        db[c_offset_nl] = 0;
+
+    }
+}
+
+XML_Node& SprayOutlet1D::save(XML_Node& o, const doublereal* const soln)
+{
+    XML_Node& inlt = Domain1D::save(o, soln);
+    XML_Node& gv = inlt.addChild("spray_outlet");
+
+    addFloat(gv, "Ul", soln[c_offset_Ul]);
+    addFloat(gv, "vl", soln[c_offset_vl]);
+    addFloat(gv, "Tl", soln[c_offset_Tl]);
+    addFloat(gv, "ml", soln[c_offset_ml]);
+    addFloat(gv, "nl", soln[c_offset_nl]);
+
+    addFloat(gv, "prs", m_spFlow->prs(lastPoint()-1));
+    addFloat(gv, "Lv", m_spFlow->Lv());
+    addFloat(gv, "cpl", m_spFlow->cpl(soln,lastPoint()-1));
+    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,lastPoint()-1));
+    addFloat(gv, "mdot", m_spFlow->mdot(soln,lastPoint()-1));
+    addFloat(gv, "q", m_spFlow->q(soln,lastPoint()-1));
+    addFloat(gv, "Fr", m_spFlow->Fr(soln,lastPoint()-1));
+    addFloat(gv, "fz", m_spFlow->fz(soln,lastPoint()-1));
+
+    return inlt;
+
+}
+
 }

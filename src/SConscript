@@ -35,6 +35,7 @@ libs = [('base', ['cpp'], baseSetup),
         ('oneD', ['cpp'], defaultSetup),
         ('zeroD', ['cpp'], defaultSetup),
         ('clib', ['cpp'], defaultSetup),
+        ('models', ['cpp'], defaultSetup),
         ]
 
 localenv = env.Clone()
@@ -86,6 +87,9 @@ if localenv['blas_lapack_libs']:
                     LIBPATH=localenv['blas_lapack_dir'])
 if localenv['system_fmt']:
     localenv.Append(LIBS='fmt')
+
+# link to CGAL library
+#localenv.Append(LIBS=['gmp','CGAL','CGAL_Core'])
 
 # Build the Cantera shared library
 if localenv['layout'] != 'debian':

@@ -1,12 +1,16 @@
 [submodule "ext/fmt"]
 	path = ext/fmt
-	url = https://github.com/fmtlib/fmt.git
+	url = ssh://git@github.com/fmtlib/fmt.git
 [submodule "ext/googletest"]
 	path = ext/googletest
-	url = https://github.com/google/googletest.git
+	url = ssh://git@github.com/google/googletest.git
 [submodule "ext/sundials"]
 	path = ext/sundials
-	url = https://github.com/Cantera/sundials-mirror
+	url = ssh://git@github.com/Cantera/sundials-mirror
 [submodule "ext/eigen"]
 	path = ext/eigen
-	url = https://github.com/Cantera/eigen-mirror.git
+	url = ssh://git@github.com/Cantera/eigen-mirror.git
+[submodule "ext/pitcon"]
+	path = ext/pitcon
+	url = git@github.com:gpavanb/pitcon.git
+        branch = damped_newton

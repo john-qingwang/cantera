@@ -16,6 +16,7 @@ namespace Cantera
 
 // domain types
 const int cFlowType = 50;
+const int cSprayType = 66;
 const int cConnectorType = 100;
 const int cSurfType = 102;
 const int cInletType = 104;
@@ -395,6 +396,11 @@ public:
     Domain1D* right() const {
         return m_right;
     }
+
+    // Pointer to previous solution
+    const double* prevSolnPtr() const {
+      return m_slast.data();
+    } 
 
     //! Value of component n at point j in the previous solution.
     double prevSoln(size_t n, size_t j) const {

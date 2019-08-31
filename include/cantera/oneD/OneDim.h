@@ -353,6 +353,9 @@ protected:
     //! Maximum number of timesteps allowed per call to solve()
     int m_nsteps_max;
 
+    // Note change norm
+    doublereal m_change;
+
 private:
     // statistics
     int m_nevals;
